@@ -286,6 +286,8 @@ export interface Character {
   attacks: Attack[];
   spell: { ability: Ability | "none"; slots: { max: number; used: number }[]; list: string };
   inventory: Inventory;
+  spellNotes: { title: string; text: string }[]; // вкладка «Заклинания»: свободные поля
+  statsHidden?: boolean;
   text: { features: string; profs: string; personality: string; ideals: string; bonds: string; flaws: string; notes: string };
 }
 
@@ -313,6 +315,7 @@ export const defaultCharacter = (name = ""): Character => ({
   conditions: {},
   attacks: [],
   spell: { ability: "none", slots: Array.from({ length: 9 }, () => ({ max: 0, used: 0 })), list: "" },
+  spellNotes: [{ title: "Заговоры и заклинания", text: "" }],
   inventory: {
     size: "medium", carryBonus: 0, containers: [],
     zones: { hands: [], belt: [], back: [], worn: [] },
@@ -335,6 +338,9 @@ export function normalize(raw: unknown, name: string): Character {
   };
   const c = merge(base, raw) as Character;
   if (c.spell.slots.length !== 9) c.spell.slots = base.spell.slots;
+  // старое поле «Заговоры и заклинания» → первое свободное поле
+  const oldList = (raw as any)?.spell?.list;
+  if (!(raw as any)?.spellNotes && oldList) c.spellNotes = [{ title: "Заговоры и заклинания", text: oldList }];
   if (c.inventory.loose?.length) { c.inventory.zones.worn.push(...c.inventory.loose); }
   delete c.inventory.loose;
   for (const k of ["name", "shield", "notes"] as const) if (typeof c.armor[k] !== "string") c.armor[k] = "";

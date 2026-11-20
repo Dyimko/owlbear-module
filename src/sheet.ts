@@ -17,7 +17,6 @@ const itemId = new URLSearchParams(location.search).get("item")!;
 const app = document.querySelector<HTMLDivElement>("#app")!;
 
 let state: Character;
-let rollMode: RollMode = "normal";
 let saveTimer: number | undefined;
 let lastJson = "";
 
@@ -95,12 +94,6 @@ function template() {
     </div>
     <div class="bar">
       <span class="pill">Бонус мастерства <b data-derived="prof"></b></span>
-      <label class="pill"><input type="checkbox" data-path="inspiration" data-type="bool"> Вдохновение</label>
-      <div class="seg" id="mode">
-        <button data-action="mode" data-mode="dis">Помеха</button>
-        <button data-action="mode" data-mode="normal" class="on">Обычный</button>
-        <button data-action="mode" data-mode="adv">Преим.</button>
-      </div>
     </div>
     <nav class="tabs">
       ${[["main", "Характеристики"], ["combat", "Бой"], ["spells", "Заклинания"], ["traits", "Черты"], ["inv", "Инвентарь"]]
@@ -187,34 +180,11 @@ function template() {
       <label class="field inline"><span>Истощение</span>
         <select data-path="exhaustion" data-type="num">${[0, 1, 2, 3, 4, 5, 6].map((n) => `<option>${n}</option>`).join("")}</select></label>
     </div>
-
-    <h3>Атаки <small>(бонус и урон вписываются вручную)</small></h3>
-    <div id="attacks"></div>
-    <button data-action="addatk">+ Атака</button>
-
-    <h3>Состояния</h3>
-    <div class="conds">
-      ${CONDITIONS.map((c) => `<label><input type="checkbox" data-path="conditions.${c}" data-type="bool"> ${c}</label>`).join("")}
-    </div>
   </section>
 
   <section data-tab-page="spells" hidden>
-    <div class="grid g3">
-      <label class="field"><span>Базовая характеристика</span>${abilitySelect("spell.ability")}</label>
-      <div class="field"><span>Сл спасброска</span><b class="big" data-derived="sdc"></b></div>
-      <div class="field"><span>Бонус атаки</span><button data-action="spellatk" data-derived="satk"></button></div>
-    </div>
-    <h3>Ячейки <small>(потрачено / всего)</small></h3>
-    <div class="slots">
-      ${Array.from({ length: 9 }, (_, i) => `
-        <div class="slot"><b>${i + 1}</b>
-          <input data-path="spell.slots.${i}.used" data-type="num" type="number" min="0">
-          <span>/</span>
-          <input data-path="spell.slots.${i}.max" data-type="num" type="number" min="0">
-          <button data-action="useslot" data-l="${i}" title="Потратить ячейку">−1</button>
-        </div>`).join("")}
-    </div>
-    ${area("Заговоры и заклинания", "spell.list", 12)}
+    <div id="spellNotes"></div>
+    <button data-action="note-add">+ Поле</button>
   </section>
 
   <section data-tab-page="traits" hidden>
@@ -232,24 +202,16 @@ function template() {
   <section data-tab-page="inv" hidden><div id="inv"></div></section>`;
 }
 
-function renderAttacks() {
-  const box = app.querySelector<HTMLDivElement>("#attacks")!;
-  box.innerHTML = state.attacks.length
-    ? `<div class="atk head"><span>Название</span><span>Бонус</span><span>Урон</span><span>Тип / заметки</span><span></span></div>` +
-      state.attacks.map((_, i) => `
-        <div class="atk">
-          <input data-path="attacks.${i}.name" data-type="text">
-          <input data-path="attacks.${i}.bonus" data-type="num" type="number">
-          <input data-path="attacks.${i}.damage" data-type="text" placeholder="1d8+3">
-          <input data-path="attacks.${i}.type" data-type="text">
-          <span class="atk-btns">
-            <button data-action="atk" data-i="${i}">Атака</button>
-            <button data-action="dmg" data-i="${i}">Урон</button>
-            <button data-action="delatk" data-i="${i}" class="danger">×</button>
-          </span>
-        </div>`).join("")
-    : `<p class="hint">Атак пока нет.</p>`;
-  applyTips(box);
+function renderNotes() {
+  const box = app.querySelector<HTMLDivElement>("#spellNotes")!;
+  box.innerHTML = state.spellNotes.map((_, i) => `
+    <div class="note-card">
+      <div class="note-head">
+        <input class="note-title" data-path="spellNotes.${i}.title" data-type="text" placeholder="Название поля">
+        <button data-action="note-del" data-i="${i}" class="danger" data-tip="Удалить поле">×</button>
+      </div>
+      <textarea data-path="spellNotes.${i}.text" data-type="text" rows="8"></textarea>
+    </div>`).join("") || `<p class="hint">Полей нет — добавьте кнопкой ниже.</p>`;
 }
 
 // ---------- подсказки при наведении ----------
@@ -348,7 +310,7 @@ function renderInv() {
 
 // ---------- синхронизация полей с состоянием ----------
 function fill() {
-  if (app.querySelectorAll("#attacks .atk:not(.head)").length !== state.attacks.length) renderAttacks();
+  if (app.querySelectorAll("#spellNotes .note-card").length !== state.spellNotes.length) renderNotes();
   if (inventorySignature(state) !== invSig) renderInv();
   app.querySelectorAll<HTMLInputElement>("[data-path]").forEach((el) => {
     if (el === document.activeElement) return;
@@ -453,25 +415,21 @@ async function onClick(e: MouseEvent) {
       app.querySelectorAll("[data-action=tab]").forEach((b) => b.classList.toggle("on", b === btn));
       app.querySelectorAll<HTMLElement>("[data-tab-page]").forEach((p) => (p.hidden = p.dataset.tabPage !== d.tab));
       break;
-    case "mode":
-      rollMode = d.mode as RollMode;
-      app.querySelectorAll("#mode button").forEach((b) => b.classList.toggle("on", b === btn));
-      break;
     case "check":
-      await rollD20(mod(c.abilities[d.ab as Ability]), `Проверка: ${ABILITIES[d.ab as Ability].name}`, rollMode, who());
+      await rollD20(mod(c.abilities[d.ab as Ability]), `Проверка: ${ABILITIES[d.ab as Ability].name}`, "normal", who());
       break;
     case "save":
       e.preventDefault(); // не переключать чекбокс владения
-      await rollD20(saveBonus(c, d.ab as Ability), `Спасбросок: ${ABILITIES[d.ab as Ability].name}`, rollMode, who());
+      await rollD20(saveBonus(c, d.ab as Ability), `Спасбросок: ${ABILITIES[d.ab as Ability].name}`, "normal", who());
       break;
     case "skill":
-      await rollD20(skillBonus(c, d.skill as Skill), SKILLS[d.skill as Skill].name, rollMode, who());
+      await rollD20(skillBonus(c, d.skill as Skill), SKILLS[d.skill as Skill].name, "normal", who());
       break;
     case "prof":
       mutate((c) => void (c.skills[d.skill as Skill] = (((c.skills[d.skill as Skill] + 1) % 3) as ProfLevel)));
       break;
     case "init":
-      await rollD20(initiative(c), "Инициатива", rollMode, who());
+      await rollD20(initiative(c), "Инициатива", "normal", who());
       break;
     case "guard":
       mutate((c) => void (c.armor.guard = Math.max(0, c.armor.guard + Number(d.d))));
@@ -488,22 +446,15 @@ async function onClick(e: MouseEvent) {
     case "deathroll":
       await rollD20(0, "Спасбросок от смерти", "normal", who());
       break;
-    case "addatk":
-      mutate((c) => c.attacks.push({ name: "Новая атака", bonus: 0, damage: "1d6", type: "" }));
+    case "note-add":
+      mutate((c) => c.spellNotes.push({ title: "Новое поле", text: "" }));
       break;
-    case "delatk":
-      mutate((c) => c.attacks.splice(Number(d.i), 1));
-      renderAttacks();
+    case "note-del": {
+      const n = c.spellNotes[Number(d.i)];
+      if (n.text.trim() && !confirm(`Удалить поле «${n.title}» с текстом?`)) return;
+      mutate((c) => c.spellNotes.splice(Number(d.i), 1));
+      renderNotes();
       fill();
-      break;
-    case "atk": {
-      const a = c.attacks[Number(d.i)];
-      await rollD20(a.bonus || 0, `Атака: ${a.name}`, rollMode, who());
-      break;
-    }
-    case "dmg": {
-      const a = c.attacks[Number(d.i)];
-      await rollFormula(a.damage, `Урон: ${a.name}${a.type ? ` (${a.type})` : ""}`, who());
       break;
     }
     case "inv-addc":
@@ -545,17 +496,6 @@ async function onClick(e: MouseEvent) {
       renderInv();
       fill();
       break;
-    case "spellatk": {
-      const sp = spellStats(c);
-      if (sp) await rollD20(sp.attack, "Атака заклинанием", rollMode, who());
-      break;
-    }
-    case "useslot": {
-      const s = c.spell.slots[Number(d.l)];
-      if (s.used >= s.max) return void OBR.notification.show(`Нет свободных ячеек ${Number(d.l) + 1} круга`, "WARNING");
-      mutate(() => void s.used++);
-      break;
-    }
   }
 }
 
@@ -568,7 +508,7 @@ OBR.onReady(async () => {
   lastJson = JSON.stringify(raw ?? null);
 
   app.innerHTML = template();
-  renderAttacks();
+  renderNotes();
   renderInv();
   applyTips();
   fill();

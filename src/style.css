@@ -99,3 +99,6 @@ button.magic { color: #c9b3ff; border-color: #9b7bdc80; }
 .chip { font-size: 11px; padding: 2px 8px; border-radius: 99px; background: #9b7bdc30; border: 1px solid #9b7bdc60; }
 .inv-row.with-hands { grid-template-columns: 10px 1.5fr 58px 50px 44px 44px 1fr auto; }
 .container-card .field.inline select { width: 160px; }
+.note-card { border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin-bottom: 8px; }
+.note-head { display: flex; gap: 6px; margin-bottom: 6px; }
+.note-title { font-weight: 600; }

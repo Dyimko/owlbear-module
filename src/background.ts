@@ -2,8 +2,13 @@
 import OBR from "@owlbear-rodeo/sdk";
 import { CHANNEL_ROLL, ID, asset, openSheet } from "./constants";
 import type { RollMessage } from "./types";
+import { registerHideMenu, startOverlay } from "./overlay";
 
 OBR.onReady(() => {
+  // Хиты, EC, AC и инициатива на токенах (у каждого игрока свои локальные надписи)
+  startOverlay();
+  registerHideMenu(asset("icon.svg"));
+
   // Всплывашка с результатом броска у всех игроков — даже если панель бросков закрыта
   OBR.broadcast.onMessage(CHANNEL_ROLL, ({ data }) => {
     const m = data as RollMessage;
