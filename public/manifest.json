@@ -4,13 +4,13 @@
   "manifest_version": 1,
   "description": "Лист персонажа D&D 5e и общий лог бросков",
   "author": "you",
-  "icon": "icon.svg",
+  "icon": "/owlbear-module/icon.svg",
   "action": {
     "title": "My System",
-    "icon": "icon.svg",
-    "popover": "index.html",
+    "icon": "/owlbear-module/icon.svg",
+    "popover": "/owlbear-module/index.html",
     "width": 360,
     "height": 640
   },
-  "background_url": "background.html"
+  "background_url": "/owlbear-module/background.html"
 }
