@@ -147,10 +147,18 @@ export interface ArmorState {
 // У каждого предмета есть вес (кг) и объём (ячейки). Контейнеры (рюкзак, ножны, сумки) имеют
 // прочность — сколько кг выдерживают, и вместимость — сетку ячеек (столбцы × строки).
 // Лист только показывает суммы; ограничения не навязываются — решаете сами.
-export interface InvItem { name: string; weight: number; volume: number; qty: number; notes: string }
+export interface InvItem {
+  name: string; weight: number; volume: number; qty: number; notes: string;
+  hands?: number; // сколько рук занимает в руках (1 или 2)
+  bonus?: { zone: "belt" | "back"; cells: number }; // ремни/перевязи: доп. место на теле, когда надеты
+}
+export type BodyZone = "hands" | "belt" | "back" | "worn";
+export type CarryZone = "none" | "hands" | "belt" | "back";
 export interface Container {
   name: string; strength: number; cols: number; rows: number; weight: number; items: InvItem[];
   magic?: boolean; // магическое хранилище: содержимое не добавляет вес персонажу
+  zone?: CarryZone; // где носится на теле
+  bodySize?: number; // сколько места занимает в зоне (в руках — число рук)
 }
 export type Size = "tiny" | "medium" | "large" | "huge" | "gargantuan";
 export const SIZES: Record<Size, { name: string; mult: number }> = {
@@ -160,7 +168,46 @@ export const SIZES: Record<Size, { name: string; mult: number }> = {
   huge: { name: "Огромный", mult: 4 },
   gargantuan: { name: "Громадный", mult: 8 },
 };
-export interface Inventory { size: Size; carryBonus: number; loose: InvItem[]; containers: Container[] }
+// Зоны тела (хоумрул под систему объёма):
+// руки — 2 руки, двуручный предмет занимает обе; пояс и спина — ячейки, расширяются ремнями и перевязями; надето — без лимита.
+export const ZONES: Record<BodyZone, { name: string; hint: string }> = {
+  hands: { name: "В руках", hint: "2 руки. Двуручное оружие и большие предметы (больше 6 ячеек) занимают обе руки. Универсальное — 1 или 2, как держите." },
+  belt: { name: "На поясе", hint: "Ячейки на поясе: кошели, ножны, оружие на петле, флаконы. Базово 4, ремни и перевязи добавляют места." },
+  back: { name: "На спине", hint: "Ячейки на спине: рюкзак, колчан, оружие за спиной. Базово 4, наплечные ремни добавляют места." },
+  worn: { name: "Надето", hint: "Доспех, одежда, кольца, плащи, ремни. Объём не ограничен, вес учитывается." },
+};
+export interface Inventory {
+  size: Size; carryBonus: number;
+  zones: Record<BodyZone, InvItem[]>;
+  zoneBase: { belt: number; back: number };
+  containers: Container[];
+  loose?: InvItem[]; // старый формат — переносится в «Надето»
+}
+
+/** Список предметов по адресу: "z:hands" / "z:belt" / "z:back" / "z:worn" / "c:3" */
+export function itemList(inv: Inventory, loc: string): InvItem[] {
+  if (loc.startsWith("c:")) return inv.containers[Number(loc.slice(2))]?.items ?? inv.zones.worn;
+  return inv.zones[loc.slice(2) as BodyZone] ?? inv.zones.worn;
+}
+
+/** Сколько рук нужно предмету по умолчанию */
+export const defaultHands = (it: { notes?: string; volume?: number }) =>
+  /Двуручное(?! \(если)/.test(it.notes ?? "") || (it.volume ?? 0) > 6 ? 2 : 1;
+
+/** Занятость зон тела */
+export function zoneUsage(inv: Inventory) {
+  const on = (z: CarryZone) => inv.containers.filter((c) => (c.zone ?? "none") === z);
+  const bonus = (z: "belt" | "back") =>
+    inv.zones.worn.reduce((s, i) => s + (i.bonus?.zone === z ? (i.bonus.cells || 0) * (i.qty || 1) : 0), 0);
+  return {
+    hands: {
+      used: inv.zones.hands.reduce((s, i) => s + (i.hands ?? defaultHands(i)) * (i.qty || 0), 0) + on("hands").reduce((s, c) => s + (c.bodySize || 1), 0),
+      cap: 2,
+    },
+    belt: { used: itemsVolume(inv.zones.belt) + on("belt").reduce((s, c) => s + (c.bodySize || 0), 0), cap: (inv.zoneBase?.belt ?? 4) + bonus("belt") },
+    back: { used: itemsVolume(inv.zones.back) + on("back").reduce((s, c) => s + (c.bodySize || 0), 0), cap: (inv.zoneBase?.back ?? 4) + bonus("back") },
+  };
+}
 /** Грузоподъёмность 2024: Сила × 15 фунтов (× 7,5 кг) × множитель размера + доп. */
 export const carryCapacity = (c: { abilities: { str: number }; inventory: Inventory }) =>
   c.abilities.str * 7.5 * (SIZES[c.inventory.size]?.mult ?? 1) + (c.inventory.carryBonus || 0);
@@ -169,31 +216,31 @@ export const carryCapacity = (c: { abilities: { str: number }; inventory: Invent
 // Где PHB не даёт предела веса (ведро, бочка), он посчитан по пропорции рюкзака: 30 фунтов на куб. фут.
 type Preset = Omit<Container, "items"> & { hint: string; parts?: Omit<Container, "items">[] };
 export const CONTAINER_PRESETS: Record<string, Preset> = {
-  backpack: { name: "Рюкзак", strength: 15, cols: 4, rows: 6, weight: 2.5, hint: "PHB: до 30 фунтов в 1 куб. футе" },
-  sack: { name: "Мешок", strength: 15, cols: 4, rows: 6, weight: 0.25, hint: "PHB: до 30 фунтов в 1 куб. футе" },
-  pouch: { name: "Кошель", strength: 3, cols: 2, rows: 2, weight: 0.5, hint: "PHB: до 6 фунтов в 1/5 куб. фута" },
-  basket: { name: "Корзина", strength: 20, cols: 6, rows: 8, weight: 1, hint: "PHB: до 40 фунтов в 2 куб. футах" },
-  bucket: { name: "Ведро", strength: 7.5, cols: 3, rows: 4, weight: 1, hint: "PHB: ½ куб. фута (3 галлона)" },
-  barrel: { name: "Бочка", strength: 60, cols: 8, rows: 12, weight: 35, hint: "PHB: 4 куб. фута твёрдого или 40 галлонов жидкости" },
-  chest: { name: "Сундук", strength: 150, cols: 16, rows: 18, weight: 12.5, hint: "PHB: до 300 фунтов в 12 куб. футах" },
-  quiver: { name: "Колчан", strength: 1, cols: 1, rows: 3, weight: 0.5, hint: "PHB: 20 стрел" },
-  boltCase: { name: "Футляр для болтов", strength: 1, cols: 1, rows: 3, weight: 0.5, hint: "PHB: 20 арбалетных болтов" },
-  scrollCase: { name: "Футляр для карт и свитков", strength: 0.5, cols: 1, rows: 2, weight: 0.5, hint: "PHB: 10 листов бумаги или 5 листов пергамента" },
-  sheath: { name: "Ножны", strength: 2, cols: 1, rows: 5, weight: 0.5, hint: "Хоумрул: одно оружие до 5 ячеек" },
-  custom: { name: "Контейнер", strength: 10, cols: 3, rows: 3, weight: 1, hint: "Свой контейнер" },
+  backpack: { name: "Рюкзак", strength: 15, cols: 4, rows: 6, weight: 2.5, zone: "back", bodySize: 4, hint: "PHB: до 30 фунтов в 1 куб. футе" },
+  sack: { name: "Мешок", strength: 15, cols: 4, rows: 6, weight: 0.25, zone: "back", bodySize: 4, hint: "PHB: до 30 фунтов в 1 куб. футе" },
+  pouch: { name: "Кошель", strength: 3, cols: 2, rows: 2, weight: 0.5, zone: "belt", bodySize: 1, hint: "PHB: до 6 фунтов в 1/5 куб. фута" },
+  basket: { name: "Корзина", strength: 20, cols: 6, rows: 8, weight: 1, zone: "hands", bodySize: 2, hint: "PHB: до 40 фунтов в 2 куб. футах" },
+  bucket: { name: "Ведро", strength: 7.5, cols: 3, rows: 4, weight: 1, zone: "hands", bodySize: 1, hint: "PHB: ½ куб. фута (3 галлона)" },
+  barrel: { name: "Бочка", strength: 60, cols: 8, rows: 12, weight: 35, zone: "none", bodySize: 0, hint: "PHB: 4 куб. фута твёрдого или 40 галлонов жидкости" },
+  chest: { name: "Сундук", strength: 150, cols: 16, rows: 18, weight: 12.5, zone: "none", bodySize: 0, hint: "PHB: до 300 фунтов в 12 куб. футах" },
+  quiver: { name: "Колчан", strength: 1, cols: 1, rows: 3, weight: 0.5, zone: "back", bodySize: 1, hint: "PHB: 20 стрел" },
+  boltCase: { name: "Футляр для болтов", strength: 1, cols: 1, rows: 3, weight: 0.5, zone: "belt", bodySize: 1, hint: "PHB: 20 арбалетных болтов" },
+  scrollCase: { name: "Футляр для карт и свитков", strength: 0.5, cols: 1, rows: 2, weight: 0.5, zone: "belt", bodySize: 1, hint: "PHB: 10 листов бумаги или 5 листов пергамента" },
+  sheath: { name: "Ножны", strength: 2, cols: 1, rows: 5, weight: 0.5, zone: "belt", bodySize: 1, hint: "Хоумрул: одно оружие до 5 ячеек" },
+  custom: { name: "Контейнер", strength: 10, cols: 3, rows: 3, weight: 1, zone: "none", bodySize: 0, hint: "Свой контейнер" },
   // Магические хранилища (DMG 2024): содержимое ничего не весит, весит только сам предмет
   bagOfHolding: { name: "Сумка хранения", strength: 250, cols: 32, rows: 48, weight: 2.5, magic: true,
-    hint: "Необычный. До 500 фунтов и 64 куб. футов, всегда весит 5 фунтов. Достать предмет — действие «Использование»" },
+    zone: "back", bodySize: 2, hint: "Необычный. До 500 фунтов и 64 куб. футов, всегда весит 5 фунтов. Достать предмет — действие «Использование»" },
   haversack: { name: "Удобный рюкзак Хеварда — центр", strength: 250, cols: 32, rows: 48, weight: 2.5, magic: true,
-    hint: "Редкий. Центральный карман 500 фунтов / 64 куб. фута, два боковых по 200 фунтов / 25 куб. футов. Всегда весит 5 фунтов. Достать — действие или бонусное действие",
+    zone: "back", bodySize: 4, hint: "Редкий. Центральный карман 500 фунтов / 64 куб. фута, два боковых по 200 фунтов / 25 куб. футов. Всегда весит 5 фунтов. Достать — действие или бонусное действие",
     parts: [
       { name: "Удобный рюкзак Хеварда — левый карман", strength: 100, cols: 20, rows: 30, weight: 0, magic: true },
       { name: "Удобный рюкзак Хеварда — правый карман", strength: 100, cols: 20, rows: 30, weight: 0, magic: true },
     ] },
   portableHole: { name: "Переносная дыра", strength: 99999, cols: 80, rows: 85, weight: 0, magic: true,
-    hint: "Редкий. Цилиндр 6 фт в диаметре и 10 фт глубиной (~282 куб. фута), предел веса не указан. Сложенная — как платок" },
+    zone: "belt", bodySize: 1, hint: "Редкий. Цилиндр 6 фт в диаметре и 10 фт глубиной (~282 куб. фута), предел веса не указан. Сложенная — как платок" },
   efficientQuiver: { name: "Эффективный колчан — стрелы и болты", strength: 99999, cols: 1, rows: 9, weight: 1, magic: true,
-    hint: "Необычный. Три отделения: 60 стрел или болтов, 18 метательных копий, 6 длинных предметов (луки, посохи, копья). Всегда весит 2 фунта",
+    zone: "back", bodySize: 1, hint: "Необычный. Три отделения: 60 стрел или болтов, 18 метательных копий, 6 длинных предметов (луки, посохи, копья). Всегда весит 2 фунта",
     parts: [
       { name: "Эффективный колчан — метательные копья", strength: 99999, cols: 6, rows: 12, weight: 0, magic: true },
       { name: "Эффективный колчан — длинные предметы", strength: 99999, cols: 6, rows: 10, weight: 0, magic: true },
@@ -205,7 +252,7 @@ export const itemsWeight = (items: InvItem[]) => items.reduce((s, i) => s + (i.w
 export const itemsVolume = (items: InvItem[]) => items.reduce((s, i) => s + (i.volume || 0) * (i.qty || 0), 0);
 /** Всё, что несёт персонаж: предметы на себе + контейнеры с содержимым */
 export const totalCarried = (inv: Inventory) =>
-  itemsWeight(inv.loose) + inv.containers.reduce((s, c) => s + (c.weight || 0) + (c.magic ? 0 : itemsWeight(c.items)), 0);
+  Object.values(inv.zones).reduce((s, items) => s + itemsWeight(items), 0) + inv.containers.reduce((s, c) => s + (c.weight || 0) + (c.magic ? 0 : itemsWeight(c.items)), 0);
 
 export interface Attack {
   name: string;
@@ -266,7 +313,11 @@ export const defaultCharacter = (name = ""): Character => ({
   conditions: {},
   attacks: [],
   spell: { ability: "none", slots: Array.from({ length: 9 }, () => ({ max: 0, used: 0 })), list: "" },
-  inventory: { size: "medium", carryBonus: 0, loose: [], containers: [] },
+  inventory: {
+    size: "medium", carryBonus: 0, containers: [],
+    zones: { hands: [], belt: [], back: [], worn: [] },
+    zoneBase: { belt: 4, back: 4 },
+  },
   text: { features: "", profs: "", personality: "", ideals: "", bonds: "", flaws: "", notes: "" },
 });
 
@@ -284,6 +335,8 @@ export function normalize(raw: unknown, name: string): Character {
   };
   const c = merge(base, raw) as Character;
   if (c.spell.slots.length !== 9) c.spell.slots = base.spell.slots;
+  if (c.inventory.loose?.length) { c.inventory.zones.worn.push(...c.inventory.loose); }
+  delete c.inventory.loose;
   for (const k of ["name", "shield", "notes"] as const) if (typeof c.armor[k] !== "string") c.armor[k] = "";
   return c;
 }

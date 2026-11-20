@@ -1,33 +1,60 @@
 // Вкладка «Инвентарь» (заготовка): переносимый вес, предметы на себе, контейнеры с сеткой ячеек
 import { CATALOG, CATEGORIES, ENCHANTABLE, MASTERY, type CatKey } from "./catalog";
-import { CONTAINER_PRESETS, SIZES, carryCapacity, itemsVolume, itemsWeight, totalCarried, type Character, type InvItem } from "./types";
+import {
+  CONTAINER_PRESETS, SIZES, ZONES, carryCapacity, defaultHands, itemsVolume, itemsWeight, totalCarried, zoneUsage,
+  type BodyZone, type Character, type InvItem, type Inventory,
+} from "./types";
 
 // Состояние поиска по каталогу (живёт между перерисовками вкладки)
-export const catalogState = { query: "", cat: "" as CatKey | "", target: -1, bonus: 0 };
+export const catalogState = { query: "", cat: "" as CatKey | "", target: "z:worn", bonus: 0 };
+const ZONE_KEYS = Object.keys(ZONES) as BodyZone[];
+
+/** Все места, куда можно положить предмет: зоны тела + контейнеры */
+const locations = (inv: Inventory) => [
+  ...ZONE_KEYS.map((z) => ({ loc: `z:${z}`, name: ZONES[z].name })),
+  ...inv.containers.map((ct, k) => ({ loc: `c:${k}`, name: ct.name || "Контейнер " + (k + 1) })),
+];
 
 const kg = (n: number) => `${Math.round(n * 100) / 100} кг`;
 const hue = (i: number) => (i * 67 + 200) % 360;
 
-function itemRows(items: InvItem[], base: string, c: number, containers: { name: string }[]) {
+function itemRows(items: InvItem[], base: string, loc: string, inv: Inventory) {
   if (!items.length) return `<p class="hint">Пусто.</p>`;
-  const moveOpts = (cur: number) =>
-    `<option value="">→</option>` +
-    (cur !== -1 ? `<option value="-1">На себе</option>` : "") +
-    containers.map((ct, k) => (k === cur ? "" : `<option value="${k}">${ct.name || "Контейнер " + (k + 1)}</option>`)).join("");
-  return `<div class="inv-row head"><span></span><span>Предмет</span><span>Вес, кг</span><span>Объём</span><span>Кол.</span><span>Заметки</span><span></span></div>` +
-    items.map((_, i) => `
-    <div class="inv-row">
+  const hands = loc === "z:hands";
+  const moveOpts = `<option value="">→</option>` + locations(inv).filter((l) => l.loc !== loc).map((l) => `<option value="${l.loc}">${l.name}</option>`).join("");
+  return `<div class="inv-row head ${hands ? "with-hands" : ""}"><span></span><span>Предмет</span><span>Вес, кг</span><span>Объём</span><span>Кол.</span>${hands ? "<span>Руки</span>" : ""}<span>Заметки</span><span></span></div>` +
+    items.map((it, i) => `
+    <div class="inv-row ${hands ? "with-hands" : ""}">
       <span class="swatch" style="background:hsl(${hue(i)} 55% 55%)"></span>
       <input data-path="${base}.${i}.name" data-type="text">
       <input data-path="${base}.${i}.weight" data-type="num" type="number" step="any" min="0">
       <input data-path="${base}.${i}.volume" data-type="num" type="number" step="1" min="0">
       <input data-path="${base}.${i}.qty" data-type="num" type="number" step="1" min="0">
+      ${hands ? `<select data-path="${base}.${i}.hands" data-type="num" data-tip="Сколько рук занимает: двуручное — 2, универсальное — как держите">
+        <option value="1" ${(it.hands ?? defaultHands(it)) === 1 ? "selected" : ""}>1</option><option value="2" ${(it.hands ?? defaultHands(it)) === 2 ? "selected" : ""}>2</option></select>` : ""}
       <input data-path="${base}.${i}.notes" data-type="text">
       <span class="atk-btns">
-        <select class="move" data-move-c="${c}" data-move-i="${i}" title="Переместить в другой контейнер">${moveOpts(c)}</select>
-        <button data-action="inv-delitem" data-c="${c}" data-i="${i}" class="danger">×</button>
+        <select class="move" data-move-from="${loc}" data-move-i="${i}" title="Переместить">${moveOpts}</select>
+        <button data-action="inv-delitem" data-loc="${loc}" data-i="${i}" class="danger">×</button>
       </span>
     </div>`).join("");
+}
+
+function zoneSection(z: BodyZone, inv: Inventory) {
+  const base = z === "belt" || z === "back"
+    ? `<label class="field inline zone-base" data-tip="Базовое место в зоне без ремней. Надетые ремни и перевязи добавляют сверху."><span>База</span><input data-path="inventory.zoneBase.${z}" data-type="num" type="number" min="0" class="tiny"></label>`
+    : "";
+  return `
+    <div class="zone">
+      <div class="zone-head" data-tip="${ZONES[z].hint}">
+        <b>${ZONES[z].name}</b>
+        ${z !== "worn" ? `<div class="bar-track zone-bar" data-inv="zone-${z}"><div></div><b></b></div>` : `<span class="hint">без лимита</span>`}
+        ${base}
+      </div>
+      <div class="zone-chips" data-inv="chips-${z}"></div>
+      ${itemRows(inv.zones[z], `inventory.zones.${z}`, `z:${z}`, inv)}
+      <button data-action="inv-additem" data-loc="z:${z}">+ Предмет</button>
+    </div>`;
 }
 
 export function renderInventory(c: Character) {
@@ -47,17 +74,16 @@ export function renderInventory(c: Character) {
         <label class="field span2"><span>Поиск</span><input data-cat="query" placeholder="меч, верёвка, зелье…" value="${catalogState.query.replace(/"/g, "&quot;")}"></label>
         <label class="field"><span>Категория</span><select data-cat="cat"><option value="">Все</option>
           ${Object.entries(CATEGORIES).map(([k, v]) => `<option value="${k}" ${catalogState.cat === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
-        <label class="field"><span>Куда положить</span><select data-cat="target"><option value="-1">На себе</option>
-          ${inv.containers.map((ct, k) => `<option value="${k}" ${catalogState.target === k ? "selected" : ""}>${ct.name || "Контейнер " + (k + 1)}</option>`).join("")}</select></label>
+        <label class="field"><span>Куда положить</span><select data-cat="target">
+          ${locations(inv).map((l) => `<option value="${l.loc}" ${catalogState.target === l.loc ? "selected" : ""}>${l.name}</option>`).join("")}</select></label>
         <label class="field" data-tip="Магический бонус для оружия, боеприпасов, доспехов и щитов. Добавляет «+N» к названию и эффект с редкостью в заметки. Остальные предметы не меняются."><span>Магия</span><select data-cat="bonus">
           ${[0, 1, 2, 3].map((b) => `<option value="${b}" ${catalogState.bonus === b ? "selected" : ""}>${b ? "+" + b : "—"}</option>`).join("")}</select></label>
       </div>
       <div class="cat-results" data-inv="catResults"></div>
     </details>
 
-    <h3>На себе <small>(в руках, на поясе, надето — без контейнера)</small></h3>
-    ${itemRows(inv.loose, "inventory.loose", -1, inv.containers)}
-    <button data-action="inv-additem" data-c="-1">+ Предмет</button>
+    <h3>На себе</h3>
+    ${ZONE_KEYS.map((z) => zoneSection(z, inv)).join("")}
 
     <h3>Контейнеры</h3>
     ${inv.containers.map((ct, k) => `
@@ -69,7 +95,12 @@ export function renderInventory(c: Character) {
           <label class="field"><span>Строки</span><input data-path="inventory.containers.${k}.rows" data-type="num" type="number" min="1" max="100"></label>
           <label class="field"><span>Свой вес, кг</span><input data-path="inventory.containers.${k}.weight" data-type="num" type="number" step="any" min="0"></label>
         </div>
-        <label class="pill magic-flag" data-tip="Магическое хранилище: содержимое не добавляет вес персонажу, учитывается только вес самого контейнера"><input type="checkbox" data-path="inventory.containers.${k}.magic" data-type="bool"> Магическое (содержимое ничего не весит)</label>
+        <div class="bar">
+          <label class="field inline" data-tip="Где носится контейнер. Занимает место в этой зоне тела: на поясе и спине — ячейки, в руках — руки."><span>Носится</span><select data-path="inventory.containers.${k}.zone" data-type="text">
+            <option value="none">Не на себе (лежит)</option><option value="belt">На поясе</option><option value="back">На спине</option><option value="hands">В руках</option></select></label>
+          <label class="field inline" data-tip="Сколько места занимает в зоне: ячеек на поясе/спине или рук (1–2), если в руках."><span>Место</span><input data-path="inventory.containers.${k}.bodySize" data-type="num" type="number" min="0" class="tiny"></label>
+          <label class="pill magic-flag" data-tip="Магическое хранилище: содержимое не добавляет вес персонажу, учитывается только вес самого контейнера"><input type="checkbox" data-path="inventory.containers.${k}.magic" data-type="bool"> Магическое</label>
+        </div>
         <div class="container-body">
           <div class="cells" data-inv="grid-${k}"></div>
           <div class="container-side">
@@ -79,8 +110,8 @@ export function renderInventory(c: Character) {
             <button data-action="inv-delc" data-c="${k}" class="danger">Удалить контейнер</button>
           </div>
         </div>
-        ${itemRows(ct.items, `inventory.containers.${k}.items`, k, inv.containers)}
-        <button data-action="inv-additem" data-c="${k}">+ Предмет в «${ct.name || "контейнер"}»</button>
+        ${itemRows(ct.items, `inventory.containers.${k}.items`, `c:${k}`, inv)}
+        <button data-action="inv-additem" data-loc="c:${k}">+ Предмет в «${ct.name || "контейнер"}»</button>
       </div>`).join("") || `<p class="hint">Контейнеров пока нет.</p>`}
     <div class="bar">
       <span>Добавить контейнер:</span>
@@ -94,7 +125,7 @@ export function renderInventory(c: Character) {
 
 /** Структура (сколько предметов и контейнеров) — чтобы понять, когда перерисовать вкладку */
 export const inventorySignature = (c: Character) =>
-  `${c.inventory.loose.length}|${c.inventory.containers.map((ct) => ct.items.length).join(",")}`;
+  `${ZONE_KEYS.map((z) => c.inventory.zones[z].length).join(",")}|${c.inventory.containers.map((ct) => ct.items.length).join(",")}`;
 
 function setBar(el: HTMLElement | null, value: number, max: number, text: string) {
   if (!el) return;
@@ -114,6 +145,23 @@ export function inventoryDerived(root: HTMLElement, c: Character) {
   setBar(q("carry"), carried, cap, `${kg(carried)} / ${kg(cap)}`);
   const ct = q("carryText");
   if (ct) ct.textContent = `Грузоподъёмность = Сила ${c.abilities.str} × 7,5 кг${SIZES[inv.size]?.mult !== 1 ? ` × ${SIZES[inv.size]?.mult} (размер)` : ""}${inv.carryBonus ? ` ${inv.carryBonus > 0 ? "+" : "−"} ${Math.abs(inv.carryBonus)}` : ""} = ${kg(cap)}. Толкать, тащить, поднимать — до ${kg(cap * 2)}.`;
+  // Зоны тела
+  const use = zoneUsage(inv);
+  setBar(q("zone-hands"), use.hands.used, use.hands.cap, `${use.hands.used} / ${use.hands.cap} руки`);
+  setBar(q("zone-belt"), use.belt.used, use.belt.cap, `${use.belt.used} / ${use.belt.cap} яч.`);
+  setBar(q("zone-back"), use.back.used, use.back.cap, `${use.back.used} / ${use.back.cap} яч.`);
+  for (const z of ["hands", "belt", "back"] as const) {
+    const chips = q(`chips-${z}`);
+    if (!chips) continue;
+    const list = inv.containers.filter((ct) => (ct.zone ?? "none") === z);
+    chips.innerHTML = list.map((ct) => `<span class="chip">${ct.name} · ${ct.bodySize || 0} ${z === "hands" ? "рук." : "яч."}</span>`).join("");
+  }
+  const wornBonus = q("chips-worn");
+  if (wornBonus) {
+    const b = inv.zones.worn.filter((i) => i.bonus?.cells);
+    wornBonus.innerHTML = b.map((i) => `<span class="chip">${i.name}: +${(i.bonus!.cells || 0) * (i.qty || 1)} яч. ${i.bonus!.zone === "belt" ? "на поясе" : "на спине"}</span>`).join("");
+  }
+
   inv.containers.forEach((ct, k) => {
     const w = itemsWeight(ct.items);
     const v = itemsVolume(ct.items);

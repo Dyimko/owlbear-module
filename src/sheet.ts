@@ -8,7 +8,8 @@ import { ABILITY_TIPS, ACTION_TIPS, CONDITION_TIPS, PATH_TIPS, SKILL_TIPS } from
 import {
   ABILITIES, ABILITY_KEYS, ARMORS, ARMOR_PROPS, ARMOR_TYPES, AR_METHODS, CONDITIONS, DEFENSE_LEVELS, GUARD, SHIELD_PROPS, SHIELDS, SKILLS, SKILL_KEYS,
   fmt, initiative, mod, normalize, passive, profBonus, saveBonus, skillBonus, spellStats,
-  CONTAINER_PRESETS, newItem,
+  CONTAINER_PRESETS, ZONES, defaultHands, itemList, newItem,
+  type BodyZone, type InvItem,
   type Ability, type Character, type ProfLevel, type Skill,
 } from "./types";
 
@@ -263,7 +264,7 @@ function tipFor(el: HTMLElement): string | undefined {
     if (/^attacks\.\d+\.damage$/.test(path)) return ACTION_TIPS.atkDamage;
     if (path.startsWith("inventory.")) {
       const f = path.split(".").pop()!;
-      const isItem = path.includes(".items.") || path.includes(".loose.");
+      const isItem = path.includes(".items.") || path.includes(".zones.");
       const T: Record<string, string> = {
         name: isItem ? "Название предмета." : "Название контейнера: рюкзак, ножны, сумка…",
         weight: isItem ? "Вес одного предмета в кг." : "Собственный вес пустого контейнера, кг. Входит в переносимый вес.",
@@ -273,6 +274,7 @@ function tipFor(el: HTMLElement): string | undefined {
         strength: "Прочность — сколько кг содержимого выдерживает контейнер.",
         cols: "Ширина сетки в ячейках. Вместимость = столбцы × строки.",
         rows: "Высота сетки в ячейках. Вместимость = столбцы × строки.",
+        hands: "Сколько рук занимает предмет: двуручное — 2, универсальное — как держите.",
       };
       return T[f] ?? PATH_TIPS[path];
     }
@@ -389,13 +391,16 @@ function derived() {
 // ---------- ввод ----------
 function onInput(e: Event) {
   const el = e.target as HTMLInputElement;
-  if (el.dataset.moveC !== undefined && e.type === "change" && el.value !== "") return moveItem(el);
+  if (el.dataset.moveFrom !== undefined) {
+    if (e.type === "change" && el.value !== "") moveItem(el);
+    return;
+  }
   if (el.dataset.cat) {
     // «change» у поля поиска срабатывает при уходе фокуса — перерисовка в этот момент съедала клик по «+»
     if (e.type === "change" && el.dataset.cat === "query") return;
     if (el.dataset.cat === "query") catalogState.query = el.value;
     if (el.dataset.cat === "cat") catalogState.cat = el.value as typeof catalogState.cat;
-    if (el.dataset.cat === "target") catalogState.target = Number(el.value);
+    if (el.dataset.cat === "target") catalogState.target = el.value;
     if (el.dataset.cat === "bonus") catalogState.bonus = Number(el.value);
     return renderCatalogResults(app.querySelector("#inv")!);
   }
@@ -419,17 +424,22 @@ function addContainers(key: string) {
   });
 }
 
-/** Переместить предмет между «на себе» (-1) и контейнерами */
+/** Переместить предмет между зонами тела и контейнерами */
 function moveItem(el: HTMLInputElement) {
-  const from = Number(el.dataset.moveC), i = Number(el.dataset.moveI), to = Number(el.value);
+  const from = el.dataset.moveFrom!, i = Number(el.dataset.moveI), to = el.value;
   mutate((c) => {
-    const list = (k: number) => (k === -1 ? c.inventory.loose : c.inventory.containers[k].items);
-    const [it] = list(from).splice(i, 1);
-    if (it) list(to).push(it);
+    const [it] = itemList(c.inventory, from).splice(i, 1);
+    if (!it) return;
+    if (to === "z:hands" && it.hands === undefined) it.hands = defaultHands(it);
+    itemList(c.inventory, to).push(it);
   });
   renderInv();
   fill();
 }
+
+/** Человекочитаемое название места */
+const locName = (c: Character, loc: string) =>
+  loc.startsWith("c:") ? c.inventory.containers[Number(loc.slice(2))]?.name ?? "контейнер" : ZONES[loc.slice(2) as BodyZone]?.name ?? "на себе";
 
 const who = () => state.name || undefined;
 
@@ -509,7 +519,7 @@ async function onClick(e: MouseEvent) {
       break;
     }
     case "inv-additem":
-      mutate((c) => (Number(d.c) === -1 ? c.inventory.loose : c.inventory.containers[Number(d.c)].items).push(newItem()));
+      mutate((c) => itemList(c.inventory, d.loc!).push(newItem()));
       break;
     case "inv-addcat": {
       const it = CATALOG[Number(d.idx)];
@@ -522,13 +532,16 @@ async function onClick(e: MouseEvent) {
       const item = b
         ? { name: `${it.name} +${b}`, weight: it.kg, volume: it.vol, qty: 1, notes: [enchant(it.cat, b), it.notes].filter(Boolean).join(" · ") }
         : { name: it.name, weight: it.kg, volume: it.vol, qty: 1, notes: it.notes };
-      const t = catalogState.target < c.inventory.containers.length ? catalogState.target : -1;
-      mutate((c) => (t === -1 ? c.inventory.loose : c.inventory.containers[t].items).push(item));
-      OBR.notification.show(`${item.name} → ${t === -1 ? "на себе" : c.inventory.containers[t].name}`, "SUCCESS");
+      const full: InvItem = { ...item, ...(it.bonus ? { bonus: { ...it.bonus } } : {}) };
+      // ремни и перевязи сами идут в «Надето», иначе — туда, куда выбрано
+      const t = it.bonus ? "z:worn" : catalogState.target.startsWith("c:") && !c.inventory.containers[Number(catalogState.target.slice(2))] ? "z:worn" : catalogState.target;
+      if (t === "z:hands") full.hands = defaultHands(full);
+      mutate((c) => itemList(c.inventory, t).push(full));
+      OBR.notification.show(`${full.name} → ${locName(c, t)}`, "SUCCESS");
       break;
     }
     case "inv-delitem":
-      mutate((c) => (Number(d.c) === -1 ? c.inventory.loose : c.inventory.containers[Number(d.c)].items).splice(Number(d.i), 1));
+      mutate((c) => itemList(c.inventory, d.loc!).splice(Number(d.i), 1));
       renderInv();
       fill();
       break;

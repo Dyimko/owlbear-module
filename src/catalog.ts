@@ -31,7 +31,10 @@ export function enchant(cat: CatKey, bonus: number) {
   return `+${bonus} к КД (${r}) — в Challenge Mode: и к AR при методе DC`;
 }
 
-export interface CatalogItem { name: string; cat: CatKey; kg: number; vol: number; notes: string; preset?: string }
+export interface CatalogItem {
+  name: string; cat: CatKey; kg: number; vol: number; notes: string; preset?: string;
+  bonus?: { zone: "belt" | "back"; cells: number }; // ремни: доп. место на теле, пока надеты
+}
 
 // Мастерство оружия 2024
 export const MASTERY: Record<string, string> = {
@@ -427,4 +430,9 @@ export const CATALOG: CatalogItem[] = [
   ...[...WEAPONS_2024, ...WEAPONS_DC].map((w) => ({ name: w[0], cat: "weapon" as CatKey, kg: lb(w[4]), vol: w[5], notes: weaponNotes(w) })),
   ...[...OTHER, ...MAGIC, ...CONSUMABLES, ...MATERIALS].map((g) => ({ name: g[0], cat: g[1], kg: lb(g[2]), vol: g[3], notes: g[4] ?? "" })),
   ...STORAGE,
+  // Ремни и перевязи (хоумрул к системе объёма; в правилах D&D места на теле нет)
+  { name: "Оружейный пояс", cat: "gear", kg: 0.5, vol: 1, notes: "Надетый: +4 ячейки на поясе (петли для оружия, ножен, кошелей)", bonus: { zone: "belt", cells: 4 } },
+  { name: "Перевязь-бандольер", cat: "gear", kg: 0.5, vol: 1, notes: "Надетая через грудь: +4 ячейки на поясе (флаконы, кинжалы, дротики)", bonus: { zone: "belt", cells: 4 } },
+  { name: "Кожаные наплечные ремни", cat: "gear", kg: 1, vol: 2, notes: "Надетые: +4 ячейки на спине (крепления для рюкзака, колчана, щита)", bonus: { zone: "back", cells: 4 } },
+  { name: "Ремень для оружия за спиной", cat: "gear", kg: 0.5, vol: 1, notes: "Надетый: +2 ячейки на спине (двуручное оружие, щит)", bonus: { zone: "back", cells: 2 } },
 ];
