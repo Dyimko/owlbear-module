@@ -125,7 +125,21 @@ export async function startOverlay() {
   schedule();
 }
 
-/** Пункты контекстного меню «Скрыть / Показать статы» для ГМ и владельца токена */
+/** Панель «Статы» в контекстном меню токена (правый клик) — для ГМ и владельца токена */
+export async function registerStatsMenu(icon: string, url: string) {
+  const mine = { key: "createdUserId", value: await OBR.player.getId() };
+  const image = { key: "type", value: "IMAGE" };
+  await OBR.contextMenu.create({
+    id: `${ID}/stats-menu`,
+    icons: [
+      { icon, label: "Статы", filter: { max: 1, roles: ["GM"], every: [image] } },
+      { icon, label: "Статы", filter: { max: 1, every: [image, mine] } },
+    ],
+    embed: { url, height: 196 },
+  });
+}
+
+/** (не используется: скрытие теперь в панели «Статы») Пункты «Скрыть / Показать статы» */
 export async function registerHideMenu(icon: string) {
   const hasSheet = { key: ["metadata", META_CHARACTER], value: undefined, operator: "!=" as const };
   const isHidden = { key: ["metadata", META_HIDDEN], value: true };

@@ -10,6 +10,7 @@ export default defineConfig({
         popover: resolve(__dirname, "index.html"),
         background: resolve(__dirname, "background.html"),
         sheet: resolve(__dirname, "sheet.html"),
+        menu: resolve(__dirname, "menu.html"),
       },
     },
   },
