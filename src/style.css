@@ -62,3 +62,6 @@ details { margin: 8px 0; } summary { cursor: pointer; opacity: .85; }
 .tooltip { position: fixed; z-index: 100; max-width: 300px; padding: 7px 9px; border-radius: 8px; background: #2b2b35; border: 1px solid #ffffff30;
   box-shadow: 0 6px 20px #0008; font-size: 12px; line-height: 1.4; pointer-events: none; white-space: normal; }
 [data-tip] { cursor: help; } button[data-tip], input[data-tip], select[data-tip], textarea[data-tip] { cursor: auto; } button[data-tip] { cursor: pointer; }
+.tokens { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; max-height: 220px; overflow-y: auto; }
+.token { display: flex; justify-content: space-between; align-items: center; text-align: left; }
+.token small { opacity: .6; }
