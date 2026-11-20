@@ -143,6 +143,29 @@ export interface ArmorState {
   notes: string; // свойства, защита (Defense), прочее
 }
 
+// ---- Инвентарь: вес + объём ----
+// У каждого предмета есть вес (кг) и объём (ячейки). Контейнеры (рюкзак, ножны, сумки) имеют
+// прочность — сколько кг выдерживают, и вместимость — сетку ячеек (столбцы × строки).
+// Лист только показывает суммы; ограничения не навязываются — решаете сами.
+export interface InvItem { name: string; weight: number; volume: number; qty: number; notes: string }
+export interface Container { name: string; strength: number; cols: number; rows: number; weight: number; items: InvItem[] }
+export interface Inventory { carryMax: number; loose: InvItem[]; containers: Container[] }
+
+export const CONTAINER_PRESETS: Record<string, Omit<Container, "items">> = {
+  backpack: { name: "Рюкзак", strength: 30, cols: 4, rows: 6, weight: 2 },
+  sheath: { name: "Ножны", strength: 5, cols: 1, rows: 5, weight: 1 },
+  pouch: { name: "Поясная сумка", strength: 5, cols: 2, rows: 2, weight: 0.5 },
+  quiver: { name: "Колчан", strength: 3, cols: 1, rows: 4, weight: 0.5 },
+  custom: { name: "Контейнер", strength: 10, cols: 3, rows: 3, weight: 1 },
+};
+export const newItem = (): InvItem => ({ name: "Предмет", weight: 1, volume: 1, qty: 1, notes: "" });
+
+export const itemsWeight = (items: InvItem[]) => items.reduce((s, i) => s + (i.weight || 0) * (i.qty || 0), 0);
+export const itemsVolume = (items: InvItem[]) => items.reduce((s, i) => s + (i.volume || 0) * (i.qty || 0), 0);
+/** Всё, что несёт персонаж: предметы на себе + контейнеры с содержимым */
+export const totalCarried = (inv: Inventory) =>
+  itemsWeight(inv.loose) + inv.containers.reduce((s, c) => s + (c.weight || 0) + itemsWeight(c.items), 0);
+
 export interface Attack {
   name: string;
   bonus: number; // итоговый бонус атаки — вписывается вручную
@@ -174,6 +197,7 @@ export interface Character {
   conditions: Record<string, boolean>;
   attacks: Attack[];
   spell: { ability: Ability | "none"; slots: { max: number; used: number }[]; list: string };
+  inventory: Inventory;
   text: { features: string; profs: string; personality: string; ideals: string; bonds: string; flaws: string; notes: string };
 }
 
@@ -201,6 +225,7 @@ export const defaultCharacter = (name = ""): Character => ({
   conditions: {},
   attacks: [],
   spell: { ability: "none", slots: Array.from({ length: 9 }, () => ({ max: 0, used: 0 })), list: "" },
+  inventory: { carryMax: 50, loose: [], containers: [] },
   text: { features: "", profs: "", personality: "", ideals: "", bonds: "", flaws: "", notes: "" },
 });
 

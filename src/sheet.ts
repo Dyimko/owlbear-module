@@ -2,10 +2,12 @@
 import OBR from "@owlbear-rodeo/sdk";
 import { CHANNEL_ROLL, META_CHARACTER } from "./constants";
 import { rollD20, rollFormula, type RollMode } from "./dice";
+import { inventoryDerived, inventorySignature, renderInventory } from "./inventory";
 import { ABILITY_TIPS, ACTION_TIPS, CONDITION_TIPS, PATH_TIPS, SKILL_TIPS } from "./tips";
 import {
   ABILITIES, ABILITY_KEYS, ARMORS, ARMOR_PROPS, ARMOR_TYPES, AR_METHODS, CONDITIONS, DEFENSE_LEVELS, GUARD, SHIELD_PROPS, SHIELDS, SKILLS, SKILL_KEYS,
   fmt, initiative, mod, normalize, passive, profBonus, saveBonus, skillBonus, spellStats,
+  CONTAINER_PRESETS, newItem,
   type Ability, type Character, type ProfLevel, type Skill,
 } from "./types";
 
@@ -225,9 +227,7 @@ function template() {
     ${area("Заметки", "text.notes", 5)}
   </section>
 
-  <section data-tab-page="inv" hidden>
-    <p class="hint">Инвентарь — кастомная система, будет добавлен позже.</p>
-  </section>`;
+  <section data-tab-page="inv" hidden><div id="inv"></div></section>`;
 }
 
 function renderAttacks() {
@@ -260,6 +260,21 @@ function tipFor(el: HTMLElement): string | undefined {
     if (path.startsWith("spell.slots.")) return ACTION_TIPS.slots;
     if (/^attacks\.\d+\.bonus$/.test(path)) return ACTION_TIPS.atkBonus;
     if (/^attacks\.\d+\.damage$/.test(path)) return ACTION_TIPS.atkDamage;
+    if (path.startsWith("inventory.")) {
+      const f = path.split(".").pop()!;
+      const isItem = path.includes(".items.") || path.includes(".loose.");
+      const T: Record<string, string> = {
+        name: isItem ? "Название предмета." : "Название контейнера: рюкзак, ножны, сумка…",
+        weight: isItem ? "Вес одного предмета в кг." : "Собственный вес пустого контейнера, кг. Входит в переносимый вес.",
+        volume: "Объём одного предмета — сколько ячеек он занимает в контейнере.",
+        qty: "Количество. Вес и объём умножаются на него.",
+        notes: "Заметки: свойства, заряды, состояние.",
+        strength: "Прочность — сколько кг содержимого выдерживает контейнер.",
+        cols: "Ширина сетки в ячейках. Вместимость = столбцы × строки.",
+        rows: "Высота сетки в ячейках. Вместимость = столбцы × строки.",
+      };
+      return T[f] ?? PATH_TIPS[path];
+    }
     if (/^attacks\.\d+\.name$/.test(path)) return "Название оружия или атаки.";
     if (/^attacks\.\d+\.type$/.test(path)) return "Тип урона (колющий, рубящий, дробящий…) и свойства оружия.";
     return PATH_TIPS[path];
@@ -319,9 +334,18 @@ document.addEventListener("mousemove", (e) => {
 });
 document.addEventListener("mouseleave", () => { tipBox.hidden = true; tipTarget = null; });
 
+let invSig = "";
+function renderInv() {
+  const box = app.querySelector<HTMLDivElement>("#inv")!;
+  box.innerHTML = renderInventory(state);
+  invSig = inventorySignature(state);
+  applyTips(box);
+}
+
 // ---------- синхронизация полей с состоянием ----------
 function fill() {
   if (app.querySelectorAll("#attacks .atk:not(.head)").length !== state.attacks.length) renderAttacks();
+  if (inventorySignature(state) !== invSig) renderInv();
   app.querySelectorAll<HTMLInputElement>("[data-path]").forEach((el) => {
     if (el === document.activeElement) return;
     const v = getPath(state, el.dataset.path!);
@@ -333,6 +357,7 @@ function fill() {
 
 function derived() {
   const c = state;
+  inventoryDerived(app.querySelector("#inv")!, c);
   const set = (k: string, v: string, cls?: [string, boolean]) => {
     app.querySelectorAll<HTMLElement>(`[data-derived="${k}"]`).forEach((el) => {
       el.textContent = v;
@@ -362,6 +387,7 @@ function derived() {
 // ---------- ввод ----------
 function onInput(e: Event) {
   const el = e.target as HTMLInputElement;
+  if (el.dataset.moveC !== undefined && e.type === "change" && el.value !== "") return moveItem(el);
   const path = el.dataset.path;
   if (!path) return;
   let v: unknown = el.value;
@@ -370,6 +396,18 @@ function onInput(e: Event) {
   setPath(state, path, v);
   derived();
   scheduleSave();
+}
+
+/** Переместить предмет между «на себе» (-1) и контейнерами */
+function moveItem(el: HTMLInputElement) {
+  const from = Number(el.dataset.moveC), i = Number(el.dataset.moveI), to = Number(el.value);
+  mutate((c) => {
+    const list = (k: number) => (k === -1 ? c.inventory.loose : c.inventory.containers[k].items);
+    const [it] = list(from).splice(i, 1);
+    if (it) list(to).push(it);
+  });
+  renderInv();
+  fill();
 }
 
 const who = () => state.name || undefined;
@@ -437,6 +475,28 @@ async function onClick(e: MouseEvent) {
       await rollFormula(a.damage, `Урон: ${a.name}${a.type ? ` (${a.type})` : ""}`, who());
       break;
     }
+    case "inv-addc": {
+      const p = CONTAINER_PRESETS[d.preset!] ?? CONTAINER_PRESETS.custom;
+      mutate((c) => c.inventory.containers.push({ ...p, items: [] }));
+      break;
+    }
+    case "inv-delc": {
+      const k = Number(d.c);
+      const ct = c.inventory.containers[k];
+      if (ct.items.length && !confirm(`Удалить «${ct.name}» вместе с ${ct.items.length} предметами?`)) return;
+      mutate((c) => c.inventory.containers.splice(k, 1));
+      renderInv();
+      fill();
+      break;
+    }
+    case "inv-additem":
+      mutate((c) => (Number(d.c) === -1 ? c.inventory.loose : c.inventory.containers[Number(d.c)].items).push(newItem()));
+      break;
+    case "inv-delitem":
+      mutate((c) => (Number(d.c) === -1 ? c.inventory.loose : c.inventory.containers[Number(d.c)].items).splice(Number(d.i), 1));
+      renderInv();
+      fill();
+      break;
     case "spellatk": {
       const sp = spellStats(c);
       if (sp) await rollD20(sp.attack, "Атака заклинанием", rollMode, who());
@@ -461,6 +521,7 @@ OBR.onReady(async () => {
 
   app.innerHTML = template();
   renderAttacks();
+  renderInv();
   applyTips();
   fill();
   app.addEventListener("input", onInput);
