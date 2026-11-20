@@ -1,0 +1,16 @@
+{
+  "name": "My System",
+  "version": "0.1.0",
+  "manifest_version": 1,
+  "description": "Лист персонажа D&D 5e и общий лог бросков",
+  "author": "you",
+  "icon": "icon.svg",
+  "action": {
+    "title": "My System",
+    "icon": "icon.svg",
+    "popover": "index.html",
+    "width": 360,
+    "height": 600
+  },
+  "background_url": "background.html"
+}
