@@ -149,14 +149,34 @@ export interface ArmorState {
 // Лист только показывает суммы; ограничения не навязываются — решаете сами.
 export interface InvItem { name: string; weight: number; volume: number; qty: number; notes: string }
 export interface Container { name: string; strength: number; cols: number; rows: number; weight: number; items: InvItem[] }
-export interface Inventory { carryMax: number; loose: InvItem[]; containers: Container[] }
+export type Size = "tiny" | "medium" | "large" | "huge" | "gargantuan";
+export const SIZES: Record<Size, { name: string; mult: number }> = {
+  tiny: { name: "Крошечный", mult: 0.5 },
+  medium: { name: "Маленький / Средний", mult: 1 },
+  large: { name: "Большой", mult: 2 },
+  huge: { name: "Огромный", mult: 4 },
+  gargantuan: { name: "Громадный", mult: 8 },
+};
+export interface Inventory { size: Size; carryBonus: number; loose: InvItem[]; containers: Container[] }
+/** Грузоподъёмность 2024: Сила × 15 фунтов (× 7,5 кг) × множитель размера + доп. */
+export const carryCapacity = (c: { abilities: { str: number }; inventory: Inventory }) =>
+  c.abilities.str * 7.5 * (SIZES[c.inventory.size]?.mult ?? 1) + (c.inventory.carryBonus || 0);
 
-export const CONTAINER_PRESETS: Record<string, Omit<Container, "items">> = {
-  backpack: { name: "Рюкзак", strength: 30, cols: 4, rows: 6, weight: 2 },
-  sheath: { name: "Ножны", strength: 5, cols: 1, rows: 5, weight: 1 },
-  pouch: { name: "Поясная сумка", strength: 5, cols: 2, rows: 2, weight: 0.5 },
-  quiver: { name: "Колчан", strength: 3, cols: 1, rows: 4, weight: 0.5 },
-  custom: { name: "Контейнер", strength: 10, cols: 3, rows: 3, weight: 1 },
+// Контейнеры D&D 2024 (вместимость по PHB, 1 фунт = 0,5 кг). Ячейки: 1 куб. фут = 24 ячейки.
+// Где PHB не даёт предела веса (ведро, бочка), он посчитан по пропорции рюкзака: 30 фунтов на куб. фут.
+export const CONTAINER_PRESETS: Record<string, Omit<Container, "items"> & { hint: string }> = {
+  backpack: { name: "Рюкзак", strength: 15, cols: 4, rows: 6, weight: 2.5, hint: "PHB: до 30 фунтов в 1 куб. футе" },
+  sack: { name: "Мешок", strength: 15, cols: 4, rows: 6, weight: 0.25, hint: "PHB: до 30 фунтов в 1 куб. футе" },
+  pouch: { name: "Кошель", strength: 3, cols: 2, rows: 2, weight: 0.5, hint: "PHB: до 6 фунтов в 1/5 куб. фута" },
+  basket: { name: "Корзина", strength: 20, cols: 6, rows: 8, weight: 1, hint: "PHB: до 40 фунтов в 2 куб. футах" },
+  bucket: { name: "Ведро", strength: 7.5, cols: 3, rows: 4, weight: 1, hint: "PHB: ½ куб. фута (3 галлона)" },
+  barrel: { name: "Бочка", strength: 60, cols: 8, rows: 12, weight: 35, hint: "PHB: 4 куб. фута твёрдого или 40 галлонов жидкости" },
+  chest: { name: "Сундук", strength: 150, cols: 16, rows: 18, weight: 12.5, hint: "PHB: до 300 фунтов в 12 куб. футах" },
+  quiver: { name: "Колчан", strength: 1, cols: 1, rows: 3, weight: 0.5, hint: "PHB: 20 стрел" },
+  boltCase: { name: "Футляр для болтов", strength: 1, cols: 1, rows: 3, weight: 0.5, hint: "PHB: 20 арбалетных болтов" },
+  scrollCase: { name: "Футляр для карт и свитков", strength: 0.5, cols: 1, rows: 2, weight: 0.5, hint: "PHB: 10 листов бумаги или 5 листов пергамента" },
+  sheath: { name: "Ножны", strength: 2, cols: 1, rows: 5, weight: 0.5, hint: "Хоумрул: одно оружие до 5 ячеек" },
+  custom: { name: "Контейнер", strength: 10, cols: 3, rows: 3, weight: 1, hint: "Свой контейнер" },
 };
 export const newItem = (): InvItem => ({ name: "Предмет", weight: 1, volume: 1, qty: 1, notes: "" });
 
@@ -225,7 +245,7 @@ export const defaultCharacter = (name = ""): Character => ({
   conditions: {},
   attacks: [],
   spell: { ability: "none", slots: Array.from({ length: 9 }, () => ({ max: 0, used: 0 })), list: "" },
-  inventory: { carryMax: 50, loose: [], containers: [] },
+  inventory: { size: "medium", carryBonus: 0, loose: [], containers: [] },
   text: { features: "", profs: "", personality: "", ideals: "", bonds: "", flaws: "", notes: "" },
 });
 

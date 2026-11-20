@@ -2,7 +2,8 @@
 import OBR from "@owlbear-rodeo/sdk";
 import { CHANNEL_ROLL, META_CHARACTER } from "./constants";
 import { rollD20, rollFormula, type RollMode } from "./dice";
-import { inventoryDerived, inventorySignature, renderInventory } from "./inventory";
+import { catalogState, inventoryDerived, inventorySignature, renderCatalogResults, renderInventory } from "./inventory";
+import { CATALOG } from "./catalog";
 import { ABILITY_TIPS, ACTION_TIPS, CONDITION_TIPS, PATH_TIPS, SKILL_TIPS } from "./tips";
 import {
   ABILITIES, ABILITY_KEYS, ARMORS, ARMOR_PROPS, ARMOR_TYPES, AR_METHODS, CONDITIONS, DEFENSE_LEVELS, GUARD, SHIELD_PROPS, SHIELDS, SKILLS, SKILL_KEYS,
@@ -339,6 +340,7 @@ function renderInv() {
   const box = app.querySelector<HTMLDivElement>("#inv")!;
   box.innerHTML = renderInventory(state);
   invSig = inventorySignature(state);
+  renderCatalogResults(box);
   applyTips(box);
 }
 
@@ -388,6 +390,14 @@ function derived() {
 function onInput(e: Event) {
   const el = e.target as HTMLInputElement;
   if (el.dataset.moveC !== undefined && e.type === "change" && el.value !== "") return moveItem(el);
+  if (el.dataset.cat) {
+    // «change» у поля поиска срабатывает при уходе фокуса — перерисовка в этот момент съедала клик по «+»
+    if (e.type === "change" && el.dataset.cat === "query") return;
+    if (el.dataset.cat === "query") catalogState.query = el.value;
+    if (el.dataset.cat === "cat") catalogState.cat = el.value as typeof catalogState.cat;
+    if (el.dataset.cat === "target") catalogState.target = Number(el.value);
+    return renderCatalogResults(app.querySelector("#inv")!);
+  }
   const path = el.dataset.path;
   if (!path) return;
   let v: unknown = el.value;
@@ -492,6 +502,13 @@ async function onClick(e: MouseEvent) {
     case "inv-additem":
       mutate((c) => (Number(d.c) === -1 ? c.inventory.loose : c.inventory.containers[Number(d.c)].items).push(newItem()));
       break;
+    case "inv-addcat": {
+      const it = CATALOG[Number(d.idx)];
+      const t = catalogState.target < c.inventory.containers.length ? catalogState.target : -1;
+      mutate((c) => (t === -1 ? c.inventory.loose : c.inventory.containers[t].items).push({ name: it.name, weight: it.kg, volume: it.vol, qty: 1, notes: it.notes }));
+      OBR.notification.show(`${it.name} → ${t === -1 ? "на себе" : c.inventory.containers[t].name}`, "SUCCESS");
+      break;
+    }
     case "inv-delitem":
       mutate((c) => (Number(d.c) === -1 ? c.inventory.loose : c.inventory.containers[Number(d.c)].items).splice(Number(d.i), 1));
       renderInv();

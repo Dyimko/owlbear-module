@@ -80,3 +80,9 @@ select.move { width: 44px; padding: 4px 2px; }
 .cells { display: grid; gap: 2px; padding: 3px; border: 2px solid #9b7bdc; border-radius: 4px; flex: none; }
 .cell { width: 22px; height: 22px; border-radius: 3px; }
 .cell.empty { border: 1px solid #ffffff40; }
+.cells .cell { width: var(--cell, 22px); height: var(--cell, 22px); }
+.catalog { border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; margin: 8px 0; }
+.cat-results { max-height: 260px; overflow-y: auto; margin-top: 6px; }
+.cat-row { display: grid; grid-template-columns: 1fr 56px 52px 30px; gap: 6px; align-items: center; padding: 3px 0; border-bottom: 1px solid var(--line); }
+.cat-name { display: flex; flex-direction: column; } .cat-name small { opacity: .6; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 380px; }
+.cat-num { font-size: 12px; opacity: .85; text-align: right; }

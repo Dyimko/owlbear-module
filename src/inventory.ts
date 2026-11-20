@@ -1,5 +1,9 @@
 // Вкладка «Инвентарь» (заготовка): переносимый вес, предметы на себе, контейнеры с сеткой ячеек
-import { CONTAINER_PRESETS, itemsVolume, itemsWeight, totalCarried, type Character, type InvItem } from "./types";
+import { CATALOG, CATEGORIES, MASTERY, type CatKey } from "./catalog";
+import { CONTAINER_PRESETS, SIZES, carryCapacity, itemsVolume, itemsWeight, totalCarried, type Character, type InvItem } from "./types";
+
+// Состояние поиска по каталогу (живёт между перерисовками вкладки)
+export const catalogState = { query: "", cat: "" as CatKey | "", target: -1 };
 
 const kg = (n: number) => `${Math.round(n * 100) / 100} кг`;
 const hue = (i: number) => (i * 67 + 200) % 360;
@@ -31,8 +35,23 @@ export function renderInventory(c: Character) {
   return `
     <div class="grid g4">
       <div class="field span2"><span>Переносимый вес (всё на персонаже)</span><div class="bar-track" data-inv="carry"><div></div><b></b></div></div>
-      <label class="field"><span>Могу нести, кг</span><input data-path="inventory.carryMax" data-type="num" type="number" step="any" min="0"></label>
+      <label class="field"><span>Размер</span><select data-path="inventory.size" data-type="text">
+        ${Object.entries(SIZES).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join("")}</select></label>
+      <label class="field"><span>Доп. кг</span><input data-path="inventory.carryBonus" data-type="num" type="number" step="any"></label>
     </div>
+    <p class="hint" data-inv="carryText"></p>
+
+    <details class="catalog" ${catalogState.query || catalogState.cat ? "open" : ""}>
+      <summary>Каталог предметов D&D 2024 (${CATALOG.length})</summary>
+      <div class="grid g4">
+        <label class="field span2"><span>Поиск</span><input data-cat="query" placeholder="меч, верёвка, зелье…" value="${catalogState.query.replace(/"/g, "&quot;")}"></label>
+        <label class="field"><span>Категория</span><select data-cat="cat"><option value="">Все</option>
+          ${Object.entries(CATEGORIES).map(([k, v]) => `<option value="${k}" ${catalogState.cat === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+        <label class="field"><span>Куда положить</span><select data-cat="target"><option value="-1">На себе</option>
+          ${inv.containers.map((ct, k) => `<option value="${k}" ${catalogState.target === k ? "selected" : ""}>${ct.name || "Контейнер " + (k + 1)}</option>`).join("")}</select></label>
+      </div>
+      <div class="cat-results" data-inv="catResults"></div>
+    </details>
 
     <h3>На себе <small>(в руках, на поясе, надето — без контейнера)</small></h3>
     ${itemRows(inv.loose, "inventory.loose", -1, inv.containers)}
@@ -44,8 +63,8 @@ export function renderInventory(c: Character) {
         <div class="grid g6">
           <label class="field span2"><span>Название</span><input data-path="inventory.containers.${k}.name" data-type="text"></label>
           <label class="field"><span>Прочность, кг</span><input data-path="inventory.containers.${k}.strength" data-type="num" type="number" step="any" min="0"></label>
-          <label class="field"><span>Столбцы</span><input data-path="inventory.containers.${k}.cols" data-type="num" type="number" min="1" max="12"></label>
-          <label class="field"><span>Строки</span><input data-path="inventory.containers.${k}.rows" data-type="num" type="number" min="1" max="20"></label>
+          <label class="field"><span>Столбцы</span><input data-path="inventory.containers.${k}.cols" data-type="num" type="number" min="1" max="20"></label>
+          <label class="field"><span>Строки</span><input data-path="inventory.containers.${k}.rows" data-type="num" type="number" min="1" max="24"></label>
           <label class="field"><span>Свой вес, кг</span><input data-path="inventory.containers.${k}.weight" data-type="num" type="number" step="any" min="0"></label>
         </div>
         <div class="container-body">
@@ -62,7 +81,7 @@ export function renderInventory(c: Character) {
       </div>`).join("") || `<p class="hint">Контейнеров пока нет.</p>`}
     <div class="bar">
       <span>Добавить контейнер:</span>
-      ${Object.entries(CONTAINER_PRESETS).map(([key, p]) => `<button data-action="inv-addc" data-preset="${key}" title="${p.name}: ${p.strength} кг, ${p.cols}×${p.rows} = ${p.cols * p.rows} ячеек">${key === "custom" ? "Свой" : p.name}</button>`).join("")}
+      ${Object.entries(CONTAINER_PRESETS).map(([key, p]) => `<button data-action="inv-addc" data-preset="${key}" data-tip="${p.name}: выдерживает ${p.strength} кг, ${p.cols}×${p.rows} = ${p.cols * p.rows} ячеек, весит ${p.weight} кг. ${p.hint}">${key === "custom" ? "Свой" : p.name}</button>`).join("")}
     </div>`;
 }
 
@@ -84,7 +103,10 @@ export function inventoryDerived(root: HTMLElement, c: Character) {
   const inv = c.inventory;
   const q = (k: string) => root.querySelector<HTMLElement>(`[data-inv="${k}"]`);
   const carried = totalCarried(inv);
-  setBar(q("carry"), carried, inv.carryMax, `${kg(carried)} / ${kg(inv.carryMax)}`);
+  const cap = carryCapacity(c);
+  setBar(q("carry"), carried, cap, `${kg(carried)} / ${kg(cap)}`);
+  const ct = q("carryText");
+  if (ct) ct.textContent = `Грузоподъёмность = Сила ${c.abilities.str} × 7,5 кг${SIZES[inv.size]?.mult !== 1 ? ` × ${SIZES[inv.size]?.mult} (размер)` : ""}${inv.carryBonus ? ` ${inv.carryBonus > 0 ? "+" : "−"} ${Math.abs(inv.carryBonus)}` : ""} = ${kg(cap)}. Толкать, тащить, поднимать — до ${kg(cap * 2)}.`;
   inv.containers.forEach((ct, k) => {
     const w = itemsWeight(ct.items);
     const v = itemsVolume(ct.items);
@@ -99,7 +121,9 @@ export function inventoryDerived(root: HTMLElement, c: Character) {
     // Сетка: ячейки заполняются по порядку предметов, цвет = предмет
     const grid = q(`grid-${k}`);
     if (!grid) return;
-    grid.style.gridTemplateColumns = `repeat(${Math.max(1, ct.cols || 1)}, 22px)`;
+    const size = (ct.cols || 1) > 10 ? 12 : (ct.cols || 1) > 6 ? 16 : 22;
+    grid.style.gridTemplateColumns = `repeat(${Math.max(1, ct.cols || 1)}, ${size}px)`;
+    grid.style.setProperty("--cell", `${size}px`);
     const filled: string[] = [];
     ct.items.forEach((it, i) => {
       const n = Math.max(0, (it.volume || 0) * (it.qty || 0));
@@ -109,4 +133,22 @@ export function inventoryDerived(root: HTMLElement, c: Character) {
     for (let j = filled.length; j < cells; j++) html.push(`<span class="cell empty"></span>`);
     grid.innerHTML = html.join("");
   });
+}
+
+/** Результаты поиска по каталогу */
+export function renderCatalogResults(root: HTMLElement) {
+  const box = root.querySelector<HTMLElement>('[data-inv="catResults"]');
+  if (!box) return;
+  const q = catalogState.query.trim().toLowerCase();
+  const found = CATALOG.map((it, idx) => ({ it, idx }))
+    .filter(({ it }) => (!catalogState.cat || it.cat === catalogState.cat) && (!q || it.name.toLowerCase().includes(q) || it.notes.toLowerCase().includes(q)));
+  const shown = found.slice(0, 60);
+  box.innerHTML = shown.length
+    ? shown.map(({ it, idx }) => `
+      <div class="cat-row" data-tip="${[it.notes || it.name, MASTERY[it.notes.match(/Мастерство: (\w+)/)?.[1] ?? ""] ?? ""].filter(Boolean).join(". ").replace(/"/g, "&quot;")}">
+        <span class="cat-name">${it.name}<small>${CATEGORIES[it.cat]}${it.notes ? " · " + it.notes : ""}</small></span>
+        <span class="cat-num">${kg(it.kg)}</span><span class="cat-num">${it.vol} яч.</span>
+        <button data-action="inv-addcat" data-idx="${idx}">+</button>
+      </div>`).join("") + (found.length > shown.length ? `<p class="hint">…и ещё ${found.length - shown.length}. Уточните поиск.</p>` : "")
+    : `<p class="hint">Ничего не найдено.</p>`;
 }
