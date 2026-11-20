@@ -1,9 +1,9 @@
 // Вкладка «Инвентарь» (заготовка): переносимый вес, предметы на себе, контейнеры с сеткой ячеек
-import { CATALOG, CATEGORIES, MASTERY, type CatKey } from "./catalog";
+import { CATALOG, CATEGORIES, ENCHANTABLE, MASTERY, type CatKey } from "./catalog";
 import { CONTAINER_PRESETS, SIZES, carryCapacity, itemsVolume, itemsWeight, totalCarried, type Character, type InvItem } from "./types";
 
 // Состояние поиска по каталогу (живёт между перерисовками вкладки)
-export const catalogState = { query: "", cat: "" as CatKey | "", target: -1 };
+export const catalogState = { query: "", cat: "" as CatKey | "", target: -1, bonus: 0 };
 
 const kg = (n: number) => `${Math.round(n * 100) / 100} кг`;
 const hue = (i: number) => (i * 67 + 200) % 360;
@@ -43,12 +43,14 @@ export function renderInventory(c: Character) {
 
     <details class="catalog" ${catalogState.query || catalogState.cat ? "open" : ""}>
       <summary>Каталог предметов D&D 2024 (${CATALOG.length})</summary>
-      <div class="grid g4">
+      <div class="grid g5">
         <label class="field span2"><span>Поиск</span><input data-cat="query" placeholder="меч, верёвка, зелье…" value="${catalogState.query.replace(/"/g, "&quot;")}"></label>
         <label class="field"><span>Категория</span><select data-cat="cat"><option value="">Все</option>
           ${Object.entries(CATEGORIES).map(([k, v]) => `<option value="${k}" ${catalogState.cat === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
         <label class="field"><span>Куда положить</span><select data-cat="target"><option value="-1">На себе</option>
           ${inv.containers.map((ct, k) => `<option value="${k}" ${catalogState.target === k ? "selected" : ""}>${ct.name || "Контейнер " + (k + 1)}</option>`).join("")}</select></label>
+        <label class="field" data-tip="Магический бонус для оружия, боеприпасов, доспехов и щитов. Добавляет «+N» к названию и эффект с редкостью в заметки. Остальные предметы не меняются."><span>Магия</span><select data-cat="bonus">
+          ${[0, 1, 2, 3].map((b) => `<option value="${b}" ${catalogState.bonus === b ? "selected" : ""}>${b ? "+" + b : "—"}</option>`).join("")}</select></label>
       </div>
       <div class="cat-results" data-inv="catResults"></div>
     </details>
@@ -63,10 +65,11 @@ export function renderInventory(c: Character) {
         <div class="grid g6">
           <label class="field span2"><span>Название</span><input data-path="inventory.containers.${k}.name" data-type="text"></label>
           <label class="field"><span>Прочность, кг</span><input data-path="inventory.containers.${k}.strength" data-type="num" type="number" step="any" min="0"></label>
-          <label class="field"><span>Столбцы</span><input data-path="inventory.containers.${k}.cols" data-type="num" type="number" min="1" max="20"></label>
-          <label class="field"><span>Строки</span><input data-path="inventory.containers.${k}.rows" data-type="num" type="number" min="1" max="24"></label>
+          <label class="field"><span>Столбцы</span><input data-path="inventory.containers.${k}.cols" data-type="num" type="number" min="1" max="100"></label>
+          <label class="field"><span>Строки</span><input data-path="inventory.containers.${k}.rows" data-type="num" type="number" min="1" max="100"></label>
           <label class="field"><span>Свой вес, кг</span><input data-path="inventory.containers.${k}.weight" data-type="num" type="number" step="any" min="0"></label>
         </div>
+        <label class="pill magic-flag" data-tip="Магическое хранилище: содержимое не добавляет вес персонажу, учитывается только вес самого контейнера"><input type="checkbox" data-path="inventory.containers.${k}.magic" data-type="bool"> Магическое (содержимое ничего не весит)</label>
         <div class="container-body">
           <div class="cells" data-inv="grid-${k}"></div>
           <div class="container-side">
@@ -81,7 +84,11 @@ export function renderInventory(c: Character) {
       </div>`).join("") || `<p class="hint">Контейнеров пока нет.</p>`}
     <div class="bar">
       <span>Добавить контейнер:</span>
-      ${Object.entries(CONTAINER_PRESETS).map(([key, p]) => `<button data-action="inv-addc" data-preset="${key}" data-tip="${p.name}: выдерживает ${p.strength} кг, ${p.cols}×${p.rows} = ${p.cols * p.rows} ячеек, весит ${p.weight} кг. ${p.hint}">${key === "custom" ? "Свой" : p.name}</button>`).join("")}
+      ${Object.entries(CONTAINER_PRESETS).filter(([, p]) => !p.magic).map(([key, p]) => `<button data-action="inv-addc" data-preset="${key}" data-tip="${p.name}: выдерживает ${p.strength} кг, ${p.cols}×${p.rows} = ${p.cols * p.rows} ячеек, весит ${p.weight} кг. ${p.hint}">${key === "custom" ? "Свой" : p.name}</button>`).join("")}
+    </div>
+    <div class="bar">
+      <span>Магические:</span>
+      ${Object.entries(CONTAINER_PRESETS).filter(([, p]) => p.magic).map(([key, p]) => `<button class="magic" data-action="inv-addc" data-preset="${key}" data-tip="${p.hint}">${p.name.split(" — ")[0]}</button>`).join("")}
     </div>`;
 }
 
@@ -121,6 +128,13 @@ export function inventoryDerived(root: HTMLElement, c: Character) {
     // Сетка: ячейки заполняются по порядку предметов, цвет = предмет
     const grid = q(`grid-${k}`);
     if (!grid) return;
+    if (cells > 400) {
+      grid.style.gridTemplateColumns = "";
+      grid.classList.add("big");
+      grid.textContent = `${cells} яч. — сетка слишком большая, смотрите полосу`;
+      return;
+    }
+    grid.classList.remove("big");
     const size = (ct.cols || 1) > 10 ? 12 : (ct.cols || 1) > 6 ? 16 : 22;
     grid.style.gridTemplateColumns = `repeat(${Math.max(1, ct.cols || 1)}, ${size}px)`;
     grid.style.setProperty("--cell", `${size}px`);
@@ -147,7 +161,7 @@ export function renderCatalogResults(root: HTMLElement) {
     ? shown.map(({ it, idx }) => `
       <div class="cat-row" data-tip="${[it.notes || it.name, MASTERY[it.notes.match(/Мастерство: (\w+)/)?.[1] ?? ""] ?? ""].filter(Boolean).join(". ").replace(/"/g, "&quot;")}">
         <span class="cat-name">${it.name}<small>${CATEGORIES[it.cat]}${it.notes ? " · " + it.notes : ""}</small></span>
-        <span class="cat-num">${kg(it.kg)}</span><span class="cat-num">${it.vol} яч.</span>
+        <span class="cat-num">${kg(it.kg)}</span><span class="cat-num">${it.preset ? "контейнер" : it.vol + " яч."}</span>
         <button data-action="inv-addcat" data-idx="${idx}">+</button>
       </div>`).join("") + (found.length > shown.length ? `<p class="hint">…и ещё ${found.length - shown.length}. Уточните поиск.</p>` : "")
     : `<p class="hint">Ничего не найдено.</p>`;

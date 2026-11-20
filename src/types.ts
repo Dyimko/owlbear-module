@@ -148,7 +148,10 @@ export interface ArmorState {
 // прочность — сколько кг выдерживают, и вместимость — сетку ячеек (столбцы × строки).
 // Лист только показывает суммы; ограничения не навязываются — решаете сами.
 export interface InvItem { name: string; weight: number; volume: number; qty: number; notes: string }
-export interface Container { name: string; strength: number; cols: number; rows: number; weight: number; items: InvItem[] }
+export interface Container {
+  name: string; strength: number; cols: number; rows: number; weight: number; items: InvItem[];
+  magic?: boolean; // магическое хранилище: содержимое не добавляет вес персонажу
+}
 export type Size = "tiny" | "medium" | "large" | "huge" | "gargantuan";
 export const SIZES: Record<Size, { name: string; mult: number }> = {
   tiny: { name: "Крошечный", mult: 0.5 },
@@ -164,7 +167,8 @@ export const carryCapacity = (c: { abilities: { str: number }; inventory: Invent
 
 // Контейнеры D&D 2024 (вместимость по PHB, 1 фунт = 0,5 кг). Ячейки: 1 куб. фут = 24 ячейки.
 // Где PHB не даёт предела веса (ведро, бочка), он посчитан по пропорции рюкзака: 30 фунтов на куб. фут.
-export const CONTAINER_PRESETS: Record<string, Omit<Container, "items"> & { hint: string }> = {
+type Preset = Omit<Container, "items"> & { hint: string; parts?: Omit<Container, "items">[] };
+export const CONTAINER_PRESETS: Record<string, Preset> = {
   backpack: { name: "Рюкзак", strength: 15, cols: 4, rows: 6, weight: 2.5, hint: "PHB: до 30 фунтов в 1 куб. футе" },
   sack: { name: "Мешок", strength: 15, cols: 4, rows: 6, weight: 0.25, hint: "PHB: до 30 фунтов в 1 куб. футе" },
   pouch: { name: "Кошель", strength: 3, cols: 2, rows: 2, weight: 0.5, hint: "PHB: до 6 фунтов в 1/5 куб. фута" },
@@ -177,6 +181,23 @@ export const CONTAINER_PRESETS: Record<string, Omit<Container, "items"> & { hint
   scrollCase: { name: "Футляр для карт и свитков", strength: 0.5, cols: 1, rows: 2, weight: 0.5, hint: "PHB: 10 листов бумаги или 5 листов пергамента" },
   sheath: { name: "Ножны", strength: 2, cols: 1, rows: 5, weight: 0.5, hint: "Хоумрул: одно оружие до 5 ячеек" },
   custom: { name: "Контейнер", strength: 10, cols: 3, rows: 3, weight: 1, hint: "Свой контейнер" },
+  // Магические хранилища (DMG 2024): содержимое ничего не весит, весит только сам предмет
+  bagOfHolding: { name: "Сумка хранения", strength: 250, cols: 32, rows: 48, weight: 2.5, magic: true,
+    hint: "Необычный. До 500 фунтов и 64 куб. футов, всегда весит 5 фунтов. Достать предмет — действие «Использование»" },
+  haversack: { name: "Удобный рюкзак Хеварда — центр", strength: 250, cols: 32, rows: 48, weight: 2.5, magic: true,
+    hint: "Редкий. Центральный карман 500 фунтов / 64 куб. фута, два боковых по 200 фунтов / 25 куб. футов. Всегда весит 5 фунтов. Достать — действие или бонусное действие",
+    parts: [
+      { name: "Удобный рюкзак Хеварда — левый карман", strength: 100, cols: 20, rows: 30, weight: 0, magic: true },
+      { name: "Удобный рюкзак Хеварда — правый карман", strength: 100, cols: 20, rows: 30, weight: 0, magic: true },
+    ] },
+  portableHole: { name: "Переносная дыра", strength: 99999, cols: 80, rows: 85, weight: 0, magic: true,
+    hint: "Редкий. Цилиндр 6 фт в диаметре и 10 фт глубиной (~282 куб. фута), предел веса не указан. Сложенная — как платок" },
+  efficientQuiver: { name: "Эффективный колчан — стрелы и болты", strength: 99999, cols: 1, rows: 9, weight: 1, magic: true,
+    hint: "Необычный. Три отделения: 60 стрел или болтов, 18 метательных копий, 6 длинных предметов (луки, посохи, копья). Всегда весит 2 фунта",
+    parts: [
+      { name: "Эффективный колчан — метательные копья", strength: 99999, cols: 6, rows: 12, weight: 0, magic: true },
+      { name: "Эффективный колчан — длинные предметы", strength: 99999, cols: 6, rows: 10, weight: 0, magic: true },
+    ] },
 };
 export const newItem = (): InvItem => ({ name: "Предмет", weight: 1, volume: 1, qty: 1, notes: "" });
 
@@ -184,7 +205,7 @@ export const itemsWeight = (items: InvItem[]) => items.reduce((s, i) => s + (i.w
 export const itemsVolume = (items: InvItem[]) => items.reduce((s, i) => s + (i.volume || 0) * (i.qty || 0), 0);
 /** Всё, что несёт персонаж: предметы на себе + контейнеры с содержимым */
 export const totalCarried = (inv: Inventory) =>
-  itemsWeight(inv.loose) + inv.containers.reduce((s, c) => s + (c.weight || 0) + itemsWeight(c.items), 0);
+  itemsWeight(inv.loose) + inv.containers.reduce((s, c) => s + (c.weight || 0) + (c.magic ? 0 : itemsWeight(c.items)), 0);
 
 export interface Attack {
   name: string;

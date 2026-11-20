@@ -3,7 +3,7 @@ import OBR from "@owlbear-rodeo/sdk";
 import { CHANNEL_ROLL, META_CHARACTER } from "./constants";
 import { rollD20, rollFormula, type RollMode } from "./dice";
 import { catalogState, inventoryDerived, inventorySignature, renderCatalogResults, renderInventory } from "./inventory";
-import { CATALOG } from "./catalog";
+import { CATALOG, ENCHANTABLE, enchant } from "./catalog";
 import { ABILITY_TIPS, ACTION_TIPS, CONDITION_TIPS, PATH_TIPS, SKILL_TIPS } from "./tips";
 import {
   ABILITIES, ABILITY_KEYS, ARMORS, ARMOR_PROPS, ARMOR_TYPES, AR_METHODS, CONDITIONS, DEFENSE_LEVELS, GUARD, SHIELD_PROPS, SHIELDS, SKILLS, SKILL_KEYS,
@@ -396,6 +396,7 @@ function onInput(e: Event) {
     if (el.dataset.cat === "query") catalogState.query = el.value;
     if (el.dataset.cat === "cat") catalogState.cat = el.value as typeof catalogState.cat;
     if (el.dataset.cat === "target") catalogState.target = Number(el.value);
+    if (el.dataset.cat === "bonus") catalogState.bonus = Number(el.value);
     return renderCatalogResults(app.querySelector("#inv")!);
   }
   const path = el.dataset.path;
@@ -406,6 +407,16 @@ function onInput(e: Event) {
   setPath(state, path, v);
   derived();
   scheduleSave();
+}
+
+/** Добавить контейнер(ы) по заготовке; у составных (рюкзак Хеварда, колчан) — несколько отделений */
+function addContainers(key: string) {
+  const p = CONTAINER_PRESETS[key] ?? CONTAINER_PRESETS.custom;
+  const { hint: _h, parts, ...main } = p;
+  mutate((c) => {
+    c.inventory.containers.push({ ...main, items: [] });
+    for (const part of parts ?? []) c.inventory.containers.push({ ...part, items: [] });
+  });
 }
 
 /** Переместить предмет между «на себе» (-1) и контейнерами */
@@ -485,11 +496,9 @@ async function onClick(e: MouseEvent) {
       await rollFormula(a.damage, `Урон: ${a.name}${a.type ? ` (${a.type})` : ""}`, who());
       break;
     }
-    case "inv-addc": {
-      const p = CONTAINER_PRESETS[d.preset!] ?? CONTAINER_PRESETS.custom;
-      mutate((c) => c.inventory.containers.push({ ...p, items: [] }));
+    case "inv-addc":
+      addContainers(d.preset!);
       break;
-    }
     case "inv-delc": {
       const k = Number(d.c);
       const ct = c.inventory.containers[k];
@@ -504,9 +513,18 @@ async function onClick(e: MouseEvent) {
       break;
     case "inv-addcat": {
       const it = CATALOG[Number(d.idx)];
+      if (it.preset) {
+        addContainers(it.preset);
+        OBR.notification.show(`${it.name} добавлен(а) в контейнеры`, "SUCCESS");
+        break;
+      }
+      const b = ENCHANTABLE.includes(it.cat) ? catalogState.bonus : 0;
+      const item = b
+        ? { name: `${it.name} +${b}`, weight: it.kg, volume: it.vol, qty: 1, notes: [enchant(it.cat, b), it.notes].filter(Boolean).join(" · ") }
+        : { name: it.name, weight: it.kg, volume: it.vol, qty: 1, notes: it.notes };
       const t = catalogState.target < c.inventory.containers.length ? catalogState.target : -1;
-      mutate((c) => (t === -1 ? c.inventory.loose : c.inventory.containers[t].items).push({ name: it.name, weight: it.kg, volume: it.vol, qty: 1, notes: it.notes }));
-      OBR.notification.show(`${it.name} → ${t === -1 ? "на себе" : c.inventory.containers[t].name}`, "SUCCESS");
+      mutate((c) => (t === -1 ? c.inventory.loose : c.inventory.containers[t].items).push(item));
+      OBR.notification.show(`${item.name} → ${t === -1 ? "на себе" : c.inventory.containers[t].name}`, "SUCCESS");
       break;
     }
     case "inv-delitem":

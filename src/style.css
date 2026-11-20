@@ -86,3 +86,7 @@ select.move { width: 44px; padding: 4px 2px; }
 .cat-row { display: grid; grid-template-columns: 1fr 56px 52px 30px; gap: 6px; align-items: center; padding: 3px 0; border-bottom: 1px solid var(--line); }
 .cat-name { display: flex; flex-direction: column; } .cat-name small { opacity: .6; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 380px; }
 .cat-num { font-size: 12px; opacity: .85; text-align: right; }
+.g5 { grid-template-columns: repeat(5, 1fr); }
+button.magic { color: #c9b3ff; border-color: #9b7bdc80; }
+.magic-flag { margin: 6px 0 0; font-size: 12px; }
+.cells.big { border-style: dashed; padding: 10px; font-size: 12px; opacity: .7; max-width: 120px; }
