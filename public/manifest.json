@@ -2,7 +2,7 @@
   "name": "My System",
   "version": "0.1.0",
   "manifest_version": 1,
-  "description": "Лист персонажа D&D 5e и общий лог бросков",
+  "description": "Лист персонажа D&D, инвентарь и статы на токенах",
   "author": "you",
   "icon": "/owlbear-module/icon.svg",
   "action": {
@@ -10,7 +10,7 @@
     "icon": "/owlbear-module/icon.svg",
     "popover": "/owlbear-module/index.html",
     "width": 360,
-    "height": 640
+    "height": 420
   },
   "background_url": "/owlbear-module/background.html"
 }

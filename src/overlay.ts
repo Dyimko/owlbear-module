@@ -1,14 +1,14 @@
 // Статы на токене: полоса хитов, Класс уклонения (EC), Класс доспеха (AC) и инициатива.
 // Рисуются ЛОКАЛЬНО у каждого игрока (OBR.scene.local) и привязаны к токену — двигаются вместе с ним.
 // Если ГМ или владелец токена скрыл статы — их видят только ГМ и владелец (полупрозрачными).
-import OBR, { buildShape, buildText, type Item, type Image } from "@owlbear-rodeo/sdk";
+import OBR, { buildPath, buildShape, buildText, type Item, type Image, type PathCommand } from "@owlbear-rodeo/sdk";
 import { ID, META_CHARACTER } from "./constants";
 import { initiative, normalize, type Character } from "./types";
+import { overlaySpecs } from "./overlayGeom";
 
 export const META_HIDDEN = `${ID}/statsHidden`;
 const META_OVERLAY = `${ID}/overlay`; // на локальных элементах: id токена
 
-const fmt = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
 
 let me = { id: "", role: "PLAYER" as "GM" | "PLAYER" };
 const drawn = new Map<string, string>(); // tokenId -> подпись того, что нарисовано
@@ -23,43 +23,28 @@ function signature(token: Image, c: Character, show: boolean, dim: boolean) {
 async function buildFor(token: Image, c: Character, dim: boolean): Promise<Item[]> {
   const b = await OBR.scene.items.getItemBounds([token.id]);
   const size = Math.min(b.width, b.height);
-  const opacity = dim ? 0.45 : 1;
+  const specs = overlaySpecs({ minX: b.min.x, maxX: b.max.x, maxY: b.max.y, cx: b.center.x, size },
+    { cur: c.hp.cur, max: c.hp.max, temp: c.hp.temp, ec: c.armor.ec, ac: c.armor.ac, init: initiative(c) }, dim);
   const tag = { [META_OVERLAY]: token.id };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const common = <T,>(x: T): T => (x as any).attachedTo(token.id).layer("ATTACHMENT").locked(true).disableHit(true)
-      .disableAttachmentBehavior(["ROTATION", "SCALE"]).metadata(tag).visible(token.visible);
-
-  const items: Item[] = [];
-
-  // Полоса хитов снизу
-  const barW = size * 0.9, barH = size * 0.17;
-  const barX = b.center.x - barW / 2, barY = b.max.y - barH * 0.55;
-  const pct = c.hp.max > 0 ? Math.max(0, Math.min(1, c.hp.cur / c.hp.max)) : 0;
-  items.push(common(buildShape().shapeType("RECTANGLE").width(barW).height(barH).position({ x: barX, y: barY })
-    .fillColor("#3a1a1a").fillOpacity(0.85 * opacity).strokeColor("#000").strokeOpacity(0.5 * opacity).strokeWidth(size * 0.01)).zIndex(1).build());
-  if (pct > 0) {
-    items.push(common(buildShape().shapeType("RECTANGLE").width(barW * pct).height(barH).position({ x: barX, y: barY })
-      .fillColor(pct > 0.5 ? "#d9433f" : pct > 0.25 ? "#e07a2b" : "#9e1b1b").fillOpacity(0.95 * opacity).strokeWidth(0)).zIndex(2).build());
-  }
-  const hpText = `${c.hp.cur}/${c.hp.max}${c.hp.temp ? ` +${c.hp.temp}` : ""}`;
-  items.push(common(buildText().textType("PLAIN").plainText(hpText).width(barW).height(barH).position({ x: barX, y: barY })
-    .textAlign("CENTER").textAlignVertical("MIDDLE").fontSize(barH * 0.78).fontWeight(700).padding(0)
-    .fillColor("#ffffff").fillOpacity(opacity).strokeColor("#000000").strokeOpacity(0.6 * opacity).strokeWidth(size * 0.006)).zIndex(3).build());
-
-  // Кружки: EC (зелёный) и AC (синий) справа над полосой, инициатива (оранжевый) слева
-  const d = size * 0.27;
-  const bubble = (cx: number, cy: number, color: string, text: string, z: number) => {
-    items.push(common(buildShape().shapeType("CIRCLE").width(d).height(d).position({ x: cx, y: cy })
-      .fillColor(color).fillOpacity(0.92 * opacity).strokeColor("#ffffff").strokeOpacity(0.7 * opacity).strokeWidth(size * 0.012)).zIndex(z).build());
-    items.push(common(buildText().textType("PLAIN").plainText(text).width(d).height(d).position({ x: cx - d / 2, y: cy - d / 2 })
-      .textAlign("CENTER").textAlignVertical("MIDDLE").fontSize(d * (text.length > 2 ? 0.42 : 0.55)).fontWeight(700).padding(0)
-      .fillColor("#ffffff").fillOpacity(opacity).strokeColor("#000000").strokeOpacity(0.5 * opacity).strokeWidth(size * 0.005)).zIndex(z + 1).build());
-  };
-  const by = barY - d * 0.45;
-  bubble(b.max.x - d * 0.45, by, "#3f7fd1", String(c.armor.ac), 10); // AC
-  bubble(b.max.x - d * 1.5, by, "#5a9a3a", String(c.armor.ec), 12); // EC
-  bubble(b.min.x + d * 0.45, by, "#c8762a", fmt(initiative(c)), 14); // инициатива
-  return items;
+  const common = (x: any) => x.attachedTo(token.id).layer("ATTACHMENT").locked(true).disableHit(true)
+    .disableAttachmentBehavior(["ROTATION", "SCALE"]).metadata(tag).visible(token.visible);
+  return specs.map((sp) => {
+    if (sp.kind === "text") {
+      return common(buildText().textType("PLAIN").plainText(sp.text!).width(sp.w).height(sp.h).position({ x: sp.x, y: sp.y })
+        .textAlign("CENTER").textAlignVertical("MIDDLE").fontSize(sp.fontSize!).fontWeight(800).padding(0)
+        .fillColor(sp.textColor!).fillOpacity(sp.fillOpacity ?? 1).strokeColor(sp.stroke!).strokeOpacity(sp.strokeOpacity ?? 1).strokeWidth(sp.strokeWidth ?? 0))
+        .zIndex(sp.z).build();
+    }
+    if (sp.kind === "circle") {
+      return common(buildShape().shapeType("CIRCLE").width(sp.w).height(sp.h).position({ x: sp.x, y: sp.y })
+        .fillColor(sp.fill!).fillOpacity(sp.fillOpacity ?? 1).strokeColor(sp.stroke ?? "#000").strokeOpacity(sp.strokeOpacity ?? 0).strokeWidth(sp.strokeWidth ?? 0))
+        .zIndex(sp.z).build();
+    }
+    return common(buildPath().commands(sp.commands as PathCommand[]).position({ x: sp.x, y: sp.y })
+      .fillColor(sp.fill!).fillOpacity(sp.fillOpacity ?? 1).strokeColor(sp.stroke ?? "#000").strokeOpacity(sp.strokeOpacity ?? 0).strokeWidth(sp.strokeWidth ?? 0))
+      .zIndex(sp.z).build();
+  });
 }
 
 async function sync(all?: Item[]) {
@@ -135,7 +120,7 @@ export async function registerStatsMenu(icon: string, url: string) {
       { icon, label: "Статы", filter: { max: 1, roles: ["GM"], every: [image] } },
       { icon, label: "Статы", filter: { max: 1, every: [image, mine] } },
     ],
-    embed: { url, height: 196 },
+    embed: { url, height: 190 },
   });
 }
 

@@ -1,4 +1,4 @@
-// Встроенная панель «Статы» в контекстном меню токена (правый клик): быстро править хиты, EC, AC
+// Встроенная панель «Статы» в контекстном меню токена (правый клик): быстро править хиты, КУ, КД
 // и скрывать статы от игроков. Видна ГМ и владельцу токена.
 import OBR from "@owlbear-rodeo/sdk";
 import { META_CHARACTER } from "./constants";
@@ -23,17 +23,17 @@ const FIELDS: [string, (c: Character) => number, (c: Character, v: number) => vo
 
 function render() {
   app.innerHTML = `
-    <input class="name" data-f="name" placeholder="Имя">
-    <div class="panel">
-      <div>
-        <div class="cap">Хиты · текущие / максимум</div>
-        <div class="hp"><input type="number" data-f="hp.cur"><span>/</span><input type="number" data-f="hp.max"></div>
+    <input class="name" data-f="name" placeholder="Имя" title="Имя персонажа">
+    <div class="card">
+      <div class="hp" title="Хиты: текущие / максимум">
+        <span class="lbl">Хиты</span>
+        <input type="number" data-f="hp.cur"><span class="slash">/</span><input type="number" data-f="hp.max">
       </div>
-      <div class="circles">
-        <div class="circle temp" title="Временные хиты"><div class="ring"><input type="number" data-f="hp.temp"></div><div class="cap">Врем.</div></div>
-        <div class="circle ec" title="Класс уклонения: атака ниже — промах"><div class="ring"><input type="number" data-f="armor.ec"></div><div class="cap">EC</div></div>
-        <div class="circle ac" title="Класс доспеха: атака выше — полный урон"><div class="ring"><input type="number" data-f="armor.ac"></div><div class="cap">AC</div></div>
-        <div class="circle init" title="Инициатива: ЛОВ + доп. бонус (меняется в листе)"><div class="ring"><b data-init></b></div><div class="cap">Иниц.</div></div>
+      <div class="stats">
+        <div class="stat temp" title="Временные хиты: теряются первыми"><div class="badge circle"><input type="number" data-f="hp.temp"></div><span class="lbl">Врем.</span></div>
+        <div class="stat ec" title="Класс уклонения: атака ниже — промах"><div class="badge circle"><input type="number" data-f="armor.ec"></div><span class="lbl">КУ</span></div>
+        <div class="stat ac" title="Класс доспеха: атака выше — полный урон, от КУ до КД — урон минус СУ"><div class="badge shield"><input type="number" data-f="armor.ac"></div><span class="lbl">КД</span></div>
+        <div class="stat init" title="Инициатива: ЛОВ + доп. бонус (меняется в листе)"><div class="badge circle"><b data-init></b></div><span class="lbl">Иниц.</span></div>
       </div>
     </div>
     <button class="toggle" data-toggle></button>`;
@@ -48,7 +48,7 @@ function fill() {
   });
   app.querySelector("[data-init]")!.textContent = fmt(initiative(state));
   const t = app.querySelector<HTMLButtonElement>("[data-toggle]")!;
-  t.textContent = hidden ? "🙈 Статы скрыты от игроков" : "👁 Статы видны всем";
+  t.textContent = hidden ? "🙈 Скрыто от игроков" : "👁 Видно всем";
   t.classList.toggle("hidden-on", hidden);
 }
 

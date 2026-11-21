@@ -48,9 +48,9 @@ export const CONDITION_HINTS: Record<string, string> = {
 };
 
 // ---- Броня: Challenge Mode Armor System (The Dungeon Coach, «Martial Gear & Combat Overhaul») ----
-// Класс уклонения (EC) и КД (AC) образуют диапазон EC–AC:
-//   атака < EC — уклонение, 0 урона; EC ≤ атака ≤ AC — попадание по броне, урон уменьшается на AR; атака > AC — полный урон.
-// EC: без доспеха и лёгкий — 10 + ЛОВ; средний — 10 + ЛОВ (макс. 2); тяжёлый — 10. Щит повышает и EC, и AC.
+// Класс уклонения (КУ) и КД образуют диапазон КУ–КД:
+//   атака < КУ — уклонение, 0 урона; КУ ≤ атака ≤ КД — попадание по броне, урон уменьшается на СУ; атака > КД — полный урон.
+// КУ: без доспеха и лёгкий — 10 + ЛОВ; средний — 10 + ЛОВ (макс. 2); тяжёлый — 10. Щит повышает и КУ, и КД.
 export type ArmorType = "none" | "light" | "medium" | "heavy";
 export const ARMOR_TYPES: Record<ArmorType, string> = { none: "без доспеха", light: "лёгкий", medium: "средний", heavy: "тяжёлый" };
 
@@ -127,7 +127,7 @@ export const DEFENSE_LEVELS: Record<string, { name: string; ac: number }> = {
 
 export type ArMethod = "dc" | "prof" | "glancing";
 export const AR_METHODS: Record<ArMethod, string> = {
-  dc: "Метод DC: AR = КД доспеха − 10",
+  dc: "Метод DC: СУ = КД доспеха − 10",
   prof: "По бонусу мастерства: лёгкий ½, средний ×1, тяжёлый ×2",
   glancing: "Скользящие удары: в диапазоне — половина урона (не меньше 1)",
 };

@@ -28,7 +28,7 @@ export function enchant(cat: CatKey, bonus: number) {
   const r = RARITY[bonus + (cat === "armor" ? 1 : 0)];
   if (cat === "weapon") return `+${bonus} к броскам атаки и урона (${r})`;
   if (cat === "ammo") return `+${bonus} к броскам атаки и урона; после попадания перестаёт быть магическим (${r})`;
-  return `+${bonus} к КД (${r}) — в Challenge Mode: и к AR при методе DC`;
+  return `+${bonus} к КД (${r}) — в Challenge Mode: и к СУ при методе DC`;
 }
 
 export interface CatalogItem {

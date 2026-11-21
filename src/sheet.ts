@@ -69,8 +69,8 @@ function reference() {
   const list = (o: Record<string, string>) => `<ul class="props">${Object.values(o).map((t) => `<li>${t}</li>`).join("")}</ul>`;
   return `<details class="ref"><summary>Справочник брони (Challenge Mode)</summary>
     <h4>Класс уклонения</h4>
-    <ul class="props"><li>Без доспеха и лёгкий: 10 + ЛОВ</li><li>Средний: 10 + ЛОВ (макс. 2)</li><li>Тяжёлый: 10</li><li>Щит прибавляется и к EC, и к AC</li></ul>
-    <h4>Снижение урона (AR)</h4>${list(AR_METHODS)}
+    <ul class="props"><li>Без доспеха и лёгкий: 10 + ЛОВ</li><li>Средний: 10 + ЛОВ (макс. 2)</li><li>Тяжёлый: 10</li><li>Щит прибавляется и к КУ, и к КД</li></ul>
+    <h4>Снижение урона (СУ)</h4>${list(AR_METHODS)}
     <h4>Доспехи</h4><table><tr><th>Доспех</th><th>Тип</th><th>КД</th><th>Сила</th><th>Скрытн.</th><th>Акроб.</th></tr>${armorRows}</table>
     <h4>Щиты</h4><table><tr><th>Щит</th><th>КД</th><th>Свойства</th><th>Сила</th><th>Скрытн.</th><th>Акроб.</th></tr>${shieldRows}</table>
     <h4>Свойства щитов</h4>${list(SHIELD_PROPS)}
@@ -131,12 +131,12 @@ function template() {
 
   <section data-tab-page="combat" hidden>
     <div class="grid g4 stats">
-      ${field("Класс уклонения (EC)", "armor.ec", "num")}
-      ${field("Класс доспеха (AC)", "armor.ac", "num")}
-      ${field("Снижение урона (AR)", "armor.ar", "num")}
+      ${field("Класс уклонения (КУ)", "armor.ec", "num")}
+      ${field("Класс доспеха (КД)", "armor.ac", "num")}
+      ${field("Снижение урона (СУ)", "armor.ar", "num")}
       <div class="field"><span>Инициатива</span><button data-action="init" data-derived="init"></button></div>
     </div>
-    <p class="hint">Атака ниже EC — уклонение · от EC до AC — по броне, урон − AR · выше AC — полный урон</p>
+    <p class="hint">Атака ниже КУ — уклонение · от КУ до КД — по броне, урон − СУ · выше КД — полный урон</p>
     <div class="grid g4">
       ${field("Доспех", "armor.name", "text", "span2")}
       ${field("Щит", "armor.shield")}
