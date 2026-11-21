@@ -61,7 +61,7 @@ const abilitySelect = (path: string, withNone = true) =>
 function reference() {
   const dis = (b: boolean) => (b ? "помеха" : "—");
   const armorRows = Object.entries(ARMORS).filter(([k]) => k !== "none" && k !== "custom").map(([, a]) =>
-    `<tr><td>${a.name}</td><td>${ARMOR_TYPES[a.type]}</td><td>${a.base}${a.type === "light" ? " + ЛОВ" : a.type === "medium" ? " + ЛОВ (макс. 2)" : ""}</td>
+    `<tr><td>${a.name}</td><td>${ARMOR_TYPES[a.type]}</td><td>${a.type === "heavy" ? "10" : a.type === "medium" ? "10 + ЛОВ (макс. 2)" : "10 + ЛОВ"}</td><td>${a.base}${a.type === "light" ? " + ЛОВ" : a.type === "medium" ? " + ЛОВ (макс. 2)" : ""}</td>
      <td>${a.strReq ? `СИЛ ${a.strReq}` : "—"}</td><td>${dis(a.stealthDis)}</td><td>${dis(a.acroDis)}</td></tr>`).join("");
   const shieldRows = Object.entries(SHIELDS).filter(([k]) => k !== "none").map(([, sh]) =>
     `<tr><td>${sh.name}</td><td>+${sh.ac}</td><td>${sh.props.map((p) => SHIELD_PROPS[p].split(":")[0]).join(", ") || "—"}</td>
@@ -69,9 +69,9 @@ function reference() {
   const list = (o: Record<string, string>) => `<ul class="props">${Object.values(o).map((t) => `<li>${t}</li>`).join("")}</ul>`;
   return `<details class="ref"><summary>Справочник брони (Challenge Mode)</summary>
     <h4>Класс уклонения</h4>
-    <ul class="props"><li>Без доспеха и лёгкий: 10 + ЛОВ</li><li>Средний: 10 + ЛОВ (макс. 2)</li><li>Тяжёлый: 10</li><li>Щит прибавляется и к КУ, и к КД</li></ul>
+    <ul class="props"><li>Без доспеха и лёгкий: 10 + ЛОВ — уклонение как без брони</li><li>Средний: 10 + ЛОВ, но не больше +2</li><li>Тяжёлый: 10 — Ловкость в КУ не идёт совсем</li><li>Щит прибавляется и к КУ, и к КД</li><li>Пример при ЛОВ +3: лёгкий КУ 13, средний 12, тяжёлый 10</li></ul>
     <h4>Снижение урона (СУ)</h4>${list(AR_METHODS)}
-    <h4>Доспехи</h4><table><tr><th>Доспех</th><th>Тип</th><th>КД</th><th>Сила</th><th>Скрытн.</th><th>Акроб.</th></tr>${armorRows}</table>
+    <h4>Доспехи</h4><table><tr><th>Доспех</th><th>Тип</th><th>КУ</th><th>КД</th><th>Сила</th><th>Скрытн.</th><th>Акроб.</th></tr>${armorRows}</table>
     <h4>Щиты</h4><table><tr><th>Щит</th><th>КД</th><th>Свойства</th><th>Сила</th><th>Скрытн.</th><th>Акроб.</th></tr>${shieldRows}</table>
     <h4>Свойства щитов</h4>${list(SHIELD_PROPS)}
     <h4>Свойства доспехов</h4>${list(ARMOR_PROPS)}
